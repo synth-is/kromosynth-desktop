@@ -1,0 +1,72 @@
+when nodes in the tree, rendered by PhylogeneticViewer, are hovered, they turn red, but when sounds have completed playing in TrajectoryUnit, the corresponding node in PhylogeneticViewer should return to its original color
+
+doesn't there need to be some measurement of when the corresponding sound has actually finished playing, and then trigger the callback to turn the highlight off?
+
+
+...........
+
+highlighting seems almost solved: the only slight issue i notice now is that when quickly hovering many cells in the tree, e.g. moving the mouse fast over it, which triggers many simultaneous highlights, exceeding the maxVoices threshold, they all become highlighted but not all highlights are eventually removed: my guess is that some of the hovered nodes were superseded in the playback priority during this fast round hover hovring many cells, and those superceded, but highlighted cells, do not eventually receive a playback finished callback to remove the highlight: so it seems that needs to be taken into account, removing highlights for nodes that were triggered but not allowed to finish playing due to hovering of other nodes before that was allowed to happen.
+
+can we make sure there are no orphaned highlights? - preferably elegangly, without hacks such as periodically checking current highlights, but by properly registering what has been highlighted, and if it is superseded by another sound due to max voice count, then its highlight should be immediately removed, while other highlights, with sounds allowed to play to completion are handled as currently. also let's not make sure not to break the highlighting interplay between looping and one-off playbacks, as we have now solved.
+
+could a solution to the orphanage issue be to check, when removing a highlight for an already playing sound, whether there are any IDs in the array of currently playing nodes which are actually not playing in either one-off or looping mode?
+
+let's not break the currently working behaviour, where a currently looping sound can be hovered multiple times in one-off mode, rapidly, without breaking the looping-assigned highlight.
+
+we just need to focus on the issue of accumulated orphan highlights, without breaking the currently working highlighting functionality.
+
+it seems that when e.g. running this code:
+```
+        // Clean up old voices if at max
+        if (this.oneOffVoices.size >= this.maxVoices) {
+          const [oldestId] = this.oneOffVoices.keys();
+          this.oneOffVoices.delete(oldestId);
+          this.updateVoiceMix();
+        }
+``` 
+in TrajectoryUnit, we need to get a hold of the corresponding cellData to call:
+
+cellData.config?.onEnded?.();
+
+as when regular playback-timeout has elapsed?
+
+could it be the case that nodes are superseded before the start playing, as it may take time for the sound to load: but still it's easy to collect orphaned highlights
+
+can't we just remove orphaned highlights when there are no longer nodes playing in either mode, one-off or looping?
+
+i stress the fact that playingNodesRef.current may accumulate nodes which never even got the chance to play, due to being superseded by other nodes, due to the max voice count, and so the timeout callback to clean up their highlight may not be working
+
+-------------------
+
+playback seems pretty good now. there are a couple of UI issues:
+
+the state of the trajectory Play button does not consistently reflect the trajectory's playback state
+when hitting the Remove button for a trajectory, the trajectory's UI element collection is not removed until hovering some node in the phylogenetic tree, while the ui elements should be removed after pressing the remove button
+
+------------
+
+this seems to have improved, great!
+
+if i e.g. hover the same sound rapidly, it plays back with the same interaction pattern after stopping recording, but the multiple simultaneous playbacks can result in distortion, seemingly due to saturation: can this be more gracefully handled, adjusting the gain according to how many sounds are playing at any given time and / or taking maxVoices into account?
+
+-------
+
+Great!
+
+it would also be nice if nodes would be highlighted in the same manner as they are highlighted on hover with the mouse, but also when their corresponding sound's playback is triggered from a trajectory recording
+
+-----
+
+
+now both trjacetory and sequence units have a way of adjusting the pitch of individual sequence/trajectory elements; sequencing unit has a pitch shift slider and trajectory unit has a playback rate slider:
+
+in the UnitConfigPanel for both types, I would like to add a Pitch slider which in a way overrides the individual sequence / trajectory element pitch settings, so all the element sliders are set accordingly. That slider could be placed under a (collapsible) Playback section in the UnitConfigPanel (the SequencingUnit already has that section).
+
+In the case of TrajectoryUnits, where the elements do not have a direct pitch shift setting, but a Playback Rate setting, it would be good to adjust the playback rate to a value equivalent to the selected pitch
+
+---------
+
+
+almost there it seems: the global pitch slider affects the pitch of all sequencing unit elements in tandem, but does not do that for the playback rate of trajectory elements in the trajectory unit
+
+

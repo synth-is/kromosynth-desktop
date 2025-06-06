@@ -1,0 +1,48 @@
+{
+  "name": "electron",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "concurrently \"npm run start --workspace=web\" \"wait-on http://localhost:5173 && cross-env ELECTRON_START_URL=http://localhost:5173 electron .\"",
+    "build": "electron-builder --dir",
+    "package": "npm run build:web --workspace=web && electron-builder"
+  },
+  "dependencies": {
+    "extract-zip": "^2.0.1",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "electron": "^28.1.0",
+    "electron-builder": "^24.6.4",
+    "wait-on": "^7.0.1"
+  },
+  "build": {
+    "appId": "com.kromosynth.app",
+    "productName": "kromosynth",
+    "files": [
+      "src/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/build",
+        "to": "app/web-build"
+      }
+    ],
+    "directories": {
+      "buildResources": "resources"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "resources/kromosynth-icon.png"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "resources/favicon-effa4d7b.ico"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "resources/kromosynth-icon.png"
+    }
+  }
+}

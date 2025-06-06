@@ -1,0 +1,559 @@
+I'll create a basic scaffold for the monorepo structure with an Electron app that's ready for you to integrate your existing React web app. Let me prepare the key files and configurations.Monorepo Project StructureCode # React + Electron Monorepo Structure
+
+```
+react-electron-monorepo/
+├── package.json                 # Root package.json with workspace config
+├── packages/
+│   ├── web/                     # Your React app will go here
+│   │   └── package.json      Now, let's create the key configuration files:Root package.jsonCode {
+  "name": "react-electron-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "start:web": "npm run start --workspace=web",
+    "build:web": "npm run build --workspace=web",
+    "start:elecpackages/electron/package.jsonCode {
+  "name": "electron",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "concurrently \"npm run start:web --workspace=web\" \"wait-on http://localhost:3000 && cross-env ELECTRON_START_URL=http://locapackages/shared/package.jsonCode {
+  "name": "shared",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.js",
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}
+Now, let's create the main Electron files:packages/electron/src/main/main.jsCode const { app, BrowserWindow, ipcMain } = require('electron');
+const path = require('path');
+const url = require('url');
+const PluginManager = require('./plugin-manager');
+
+// Keep a global reference of the window object to prevent garbage collection
+lpackages/electron/src/main/plugin-manager.jsCode const { app } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const { spawn } = require('child_process');
+const fetch = require('node-fetch');
+const extract = require('extract-zip');
+
+class PluginManager {
+  constructorpackages/electron/src/preload/preload.jsCode const { contextBridge, ipcRenderer } = require('electron');
+
+// Expose protected methods that allow the renderer process to use
+// the ipcRenderer without exposing the entire object
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Plugin managempackages/shared/src/index.jsCode // Utility to detect Electron environment
+export const isElectronEnvironment = () => {
+  return window?.electronAPI?.isElectron === true;
+};
+
+// Utility to get plugin API (with web fallback)
+export const getPluginAPI = () => {
+  if (isElectronEnviron.gitignoreCode # Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Testing
+coverage/
+
+# Production
+build/
+dist/
+out/
+
+# Misc
+.DS_Store
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# EHow to Integrate Your React AppCode # Integrating Your React App into the Monorepo
+
+Follow these steps to integrate your existing React application into this monorepo structure:
+
+## Step 1: Set Up the Monorepo
+
+1. Create the directory structure as specified in the project scaffold
+2. CExample React ComponentCode import React, { useState, useEffect } from 'react';
+import { isElectronEnvironment, getPluginAPI } from 'shared';
+
+const PluginMarketplace = () => {
+  const [availablePlugins, setAvailablePlugins] = useState([]);
+  const [installedPlugins, setInstallNow that I've created all the necessary files for the scaffold, let me provide you with step-by-step instructions to get started.
+Getting Started with Your React-Electron Monorepo
+This scaffold provides a basic structure for integrating your existing React application with Electron. Here's how to use it:
+1. Initial Setup
+
+Create the folder structure:
+bashmkdir -p react-electron-monorepo/packages/{web,electron,shared}/src
+mkdir -p react-electron-monorepo/packages/electron/src/{main,preload}
+mkdir -p react-electron-monorepo/packages/electron/resources
+mkdir -p react-electron-monorepo/packages/shared/src
+
+Copy the configuration files from the artifacts I've provided into their respective directories:
+
+Root package.json → react-electron-monorepo/package.json
+Electron package.json → react-electron-monorepo/packages/electron/package.json
+Shared package.json → react-electron-monorepo/packages/shared/package.json
+.gitignore → react-electron-monorepo/.gitignore
+
+
+Copy the source files:
+
+main.js → packages/electron/src/main/main.js
+plugin-manager.js → packages/electron/src/main/plugin-manager.js
+preload.js → packages/electron/src/preload/preload.js
+index.js (shared utils) → packages/shared/src/index.js
+
+
+
+2. Integrate Your React App
+
+Copy your entire React app into the packages/web directory.
+Ensure your React app's package.json has:
+
+A name field set to "web"
+Scripts for start and build that align with the monorepo structure
+
+
+If your React app uses absolute imports, you might need to update paths.
+
+3. Install Dependencies and Test
+
+From the monorepo root, install dependencies:
+bashnpm install
+# or
+yarn install
+
+Start your React app to verify it works:
+bashnpm run start:web
+
+Start the Electron app to verify integration:
+bashnpm run start:electron
+
+
+4. Implement Environment Detection
+To make your React app aware of the Electron environment:
+
+Use the provided utility in your React components:
+javascriptimport { isElectronEnvironment } from 'shared';
+
+// In your component:
+if (isElectronEnvironment()) {
+  // Electron-specific functionality
+}
+
+You can also use conditional rendering for Electron-specific UI elements:
+jsx{isElectronEnvironment() && (
+  <button onClick={openPluginManager}>Open Plugin Manager</button>
+)}
+
+
+Key Features Included
+
+Environment Detection: Utilities to detect and adapt to web or Electron environments
+Plugin System: Basic structure for a plugin system using WebSockets
+IPC Communication: Secure bridge between Electron main and renderer processes
+Build Configuration: Scripts to build for both web and desktop
+Shared Code: Framework for shared components between platforms
+
+Customizing the Implementation
+
+Plugin System: The plugin-manager.js file contains a mock implementation that you can extend with actual functionality.
+Python Integration: You'll need to enhance the plugin system to properly handle Python virtual environments and WebSocket communication.
+Electron Configuration: Modify the Electron build settings in packages/electron/package.json to match your app's requirements.
+
+This scaffold provides the basic structure and functionality to get started. As you integrate your existing React app, you'll likely need to adapt and extend these configurations to fit your specific needs.
+Would you like me to clarify or elaborate on any specific part of the implementationRetryBÞContinueEditAdditional Implementation Details
+Let's cover some additional aspects that will be important for your integration:
+1. WebSocket Communication with Python Services
+To implement the actual WebSocket communication with Python services:
+
+React Component for WebSocket Connection:
+
+jsximport React, { useEffect, useState } from 'react';
+import { isElectronEnvironment } from 'shared';
+
+const SimulationViewer = ({ pluginId }) => {
+  const [socket, setSocket] = useState(null);
+  const [connected, setConnected] = useState(false);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!isElectronEnvironment()) {
+      setError('Simulation requires desktop app');
+      return;
+    }
+
+    const setupWebSocket = async () => {
+      try {
+        // Get port from plugin manager
+        const port = await window.electronAPI.startPluginService(pluginId);
+        const ws = new WebSocket(`ws://localhost:${port}`);
+        
+        ws.onopen = () => {
+          setConnected(true);
+          setError(null);
+          // Initialize simulation
+          ws.send(JSON.stringify({
+            command: 'start_simulation',
+            parameters: {
+              fitness_function: 'default',
+              max_generations: 100,
+              population_size: 50
+            }
+          }));
+        };
+        
+        ws.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          setData(message);
+        };
+        
+        ws.onerror = (err) => {
+          setError(`WebSocket error: ${err.message}`);
+          setConnected(false);
+        };
+        
+        ws.onclose = () => {
+          setConnected(false);
+        };
+        
+        setSocket(ws);
+        
+        // Clean up function
+        return () => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.close();
+          }
+        };
+      } catch (err) {
+        setError(`Failed to start plugin service: ${err.message}`);
+      }
+    };
+    
+    setupWebSocket();
+  }, [pluginId]);
+
+  return (
+    <div className="simulation-viewer">
+      <h2>Simulation Viewer</h2>
+      
+      {error && <div className="error">{error}</div>}
+      
+      <div className="status">
+        Connection status: {connected ? 'Connected' : 'Disconnected'}
+      </div>
+      
+      {data && (
+        <div className="simulation-data">
+          <h3>Generation {data.generation}</h3>
+          <p>Archive size: {data.archive_size}</p>
+          <p>Best fitness: {data.best_fitness}</p>
+          <p>Coverage: {data.coverage}</p>
+          
+          {/* Visualization would go here */}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default SimulationViewer;
+2. Python Plugin Service Template
+Create a template for Python services that developers can use:
+python# template_service.py
+import asyncio
+import websockets
+import json
+import argparse
+import sys
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger('plugin-service')
+
+class PluginService:
+    def __init__(self):
+        self.simulation_running = False
+        
+    async def handle_message(self, websocket, path):
+        logger.info(f"New client connected: {path}")
+        try:
+            async for message in websocket:
+                logger.info(f"Received message: {message[:100]}...")
+                
+                try:
+                    data = json.loads(message)
+                    cmd = data.get('command')
+                    
+                    if cmd == 'start_simulation':
+                        await self.start_simulation(websocket, data.get('parameters', {}))
+                    elif cmd == 'stop_simulation':
+                        self.simulation_running = False
+                        await websocket.send(json.dumps({'status': 'stopped'}))
+                    else:
+                        await websocket.send(json.dumps({
+                            'error': f'Unknown command: {cmd}'
+                        }))
+                except json.JSONDecodeError:
+                    await websocket.send(json.dumps({
+                        'error': 'Invalid JSON'
+                    }))
+        except websockets.exceptions.ConnectionClosed:
+            logger.info("Client disconnected")
+        finally:
+            self.simulation_running = False
+    
+    async def start_simulation(self, websocket, params):
+        logger.info(f"Starting simulation with params: {params}")
+        self.simulation_running = True
+        
+        # Replace this with your actual simulation code
+        generation = 0
+        max_generations = params.get('max_generations', 10)
+        
+        while self.simulation_running and generation < max_generations:
+            # Mock simulation step
+            generation += 1
+            
+            # Send mock results
+            await websocket.send(json.dumps({
+                'type': 'generation_update',
+                'generation': generation,
+                'archive_size': generation * 5,
+                'best_fitness': 0.5 + generation / (2 * max_generations),
+                'coverage': generation / max_generations,
+                'archive_data': [
+                    # Mock data points
+                    {'x': 0.1, 'y': 0.2, 'fitness': 0.5},
+                    {'x': 0.3, 'y': 0.7, 'fitness': 0.6},
+                    {'x': 0.8, 'y': 0.1, 'fitness': 0.4}
+                ]
+            }))
+            
+            # Delay between generations
+            await asyncio.sleep(1)
+        
+        await websocket.send(json.dumps({
+            'type': 'simulation_complete',
+            'total_generations': generation
+        }))
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', type=int, default=8765)
+    args = parser.parse_args()
+    
+    service = PluginService()
+    
+    logger.info(f"Starting WebSocket server on port {args.port}")
+    
+    start_server = websockets.serve(service.handle_plugin, "localhost", args.port)
+    
+    asyncio.get_event_loop().run_until_complete(start_server)
+    asyncio.get_event_loop().run_forever()
+3. Managing Python Dependencies and Virtual Environments
+To ensure proper management of Python environments:
+
+Python Environment Detector:
+
+javascript// In plugin-manager.js
+
+async function detectPythonEnvironment() {
+  try {
+    // Try to execute python --version
+    const pythonVersionProc = spawn('python', ['--version']);
+    let pythonVersionOutput = '';
+    
+    pythonVersionProc.stdout.on('data', (data) => {
+      pythonVersionOutput += data.toString();
+    });
+    
+    pythonVersionProc.stderr.on('data', (data) => {
+      pythonVersionOutput += data.toString();
+    });
+    
+    const pythonVersionExitCode = await new Promise((resolve) => {
+      pythonVersionProc.on('close', resolve);
+    });
+    
+    if (pythonVersionExitCode !== 0) {
+      throw new Error('Python not found');
+    }
+    
+    // Try to execute pip --version
+    const pipVersionProc = spawn('pip', ['--version']);
+    let pipVersionOutput = '';
+    
+    pipVersionProc.stdout.on('data', (data) => {
+      pipVersionOutput += data.toString();
+    });
+    
+    const pipVersionExitCode = await new Promise((resolve) => {
+      pipVersionProc.on('close', resolve);
+    });
+    
+    if (pipVersionExitCode !== 0) {
+      throw new Error('Pip not found');
+    }
+    
+    // Check for venv module
+    const venvCheckProc = spawn('python', ['-c', 'import venv; print("venv available")'
+    ]);
+    
+    let venvCheckOutput = '';
+    venvCheckProc.stdout.on('data', (data) => {
+      venvCheckOutput += data.toString();
+    });
+    
+    const venvExitCode = await new Promise((resolve) => {
+      venvCheckProc.on('close', resolve);
+    });
+    
+    return {
+      python: pythonVersionOutput.trim(),
+      pip: pipVersionOutput.trim(),
+      venvAvailable: venvExitCode === 0 && venvCheckOutput.includes('venv available')
+    };
+  } catch (error) {
+    console.error('Error detecting Python environment:', error);
+    return {
+      python: null,
+      pip: null,
+      venvAvailable: false
+    };
+  }
+}
+4. Progressive Enhancement of Your React App
+As you integrate Electron, consider a progressive enhancement approach:
+
+Start with environment detection:
+jsximport { isElectronEnvironment } from 'shared';
+
+function MyComponent() {
+  return (
+    <div>
+      <h1>My Application</h1>
+      {isElectronEnvironment() ? (
+        <p>Running in Electron - Enhanced features available</p>
+      ) : (
+        <p>Running in browser - Basic features only</p>
+      )}
+    </div>
+  );
+}
+
+Implement feature flags for desktop-specific features:
+jsx<button 
+  onClick={runSimulation} 
+  disabled={!isElectronEnvironment()}
+  title={!isElectronEnvironment() ? "Requires desktop app" : ""}
+>
+  Run Simulation
+</button>
+
+Provide graceful degradation for web-only users:
+jsxfunction SimulationFeature() {
+  if (!isElectronEnvironment()) {
+    return (
+      <div className="upgrade-prompt">
+        <h3>Advanced Simulations</h3>
+        <p>Download our desktop app for full simulation capabilities.</p>
+        <a href="/download" className="download-button">
+          Download Desktop App
+        </a>
+      </div>
+    );
+  }
+  
+  return <FullSimulationInterface />;
+}
+
+
+5. Inter-Process Communication Considerations
+When working with Electron, be mindful of security with IPC:
+
+Use validation for all incoming IPC calls
+Limit exposed APIs to only what's needed
+Consider contextIsolation (enabled by default in our setup)
+
+javascript// In your preload.js
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Only expose specific methods with validation
+  startPluginService: (pluginId) => {
+    // Validate pluginId is a string and matches expected format
+    if (typeof pluginId !== 'string' || !pluginId.match(/^[a-zA-Z0-9-_]+$/)) {
+      throw new Error('Invalid plugin ID');
+    }
+    return ipcRenderer.invoke('start-plugin-service', pluginId);
+  }
+});
+6. Packaging and Distribution
+For distributing your Electron app:
+
+Update the build configuration in packages/electron/package.json:
+json"build": {
+  "appId": "com.yourcompany.appname",
+  "productName": "Your App Name",
+  "copyright": "Copyright © 2025 Your Company",
+  "mac": {
+    "category": "public.app-category.developer-tools",
+    "target": ["dmg", "zip"]
+  },
+  "win": {
+    "target": ["nsis", "portable"]
+  },
+  "linux": {
+    "target": ["AppImage", "deb"],
+    "category": "Development"
+  },
+  "directories": {
+    "buildResources": "resources"
+  },
+  "extraResources": [
+    {
+      "from": "../web/build",
+      "to": "app/web-build"
+    },
+    {
+      "from": "resources/plugin-templates",
+      "to": "app/plugin-templates"
+    }
+  ]
+}
+
+Create platform-specific installers:
+bash# For macOS
+npm run package:electron -- --mac
+
+# For Windows
+npm run package:electron -- --win
+
+# For Linux
+npm run package:electron -- --linux
+
+
+This covers the major additional aspects of your integration. By following these guidelines, you should be able to successfully integrate your existing React app with Electron while maintaining a clean, maintainable codebase that runs in both web and desktop environments.
