@@ -100,7 +100,7 @@ const HeatmapViewer = ({
   setShowSettings,
   experiment,  // Add missing prop
   evoRunId,
-  matrixUrl,
+  matrixUrls,
   hasAudioInteraction,
   onAudioInteraction,
   onCellHover
@@ -133,19 +133,46 @@ const HeatmapViewer = ({
   const [useSquareCells, setUseSquareCells] = useState(true);
   const [rendererReady, setRendererReady] = useState(false);
 
-  // Add matrix data loading effect
+  // Add matrix data loading effect with hybrid approach
   useEffect(() => {
-    if (!matrixUrl) return;
+    if (!matrixUrls) return;
     
-    console.log('Fetching matrix data for URL:', matrixUrl);
+    console.log('Fetching matrix data with hybrid approach:', matrixUrls);
     
-    fetch(matrixUrl)
-      .then(response => response.json())
+    // Try REST service first
+    fetch(matrixUrls.restUrl)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`REST service failed: ${response.status}`);
+        }
+        return response.json();
+      })
       .then(data => {
+        console.log('Matrix data loaded from REST service');
         setMatrixData(data);
       })
-      .catch(error => console.error('Error loading matrix data:', error));
-  }, [matrixUrl]);
+      .catch(error => {
+        console.warn('REST service failed, trying fallback:', error.message);
+        // Try fallback URL
+        fetch(matrixUrls.fallbackUrl)
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`Fallback failed: ${response.status}`);
+            }
+            return response.json();
+          })
+          .then(data => {
+            console.log('Matrix data loaded from fallback URL');
+            setMatrixData(data);
+          })
+          .catch(fallbackError => {
+            console.error('Both REST service and fallback failed:', { 
+              restError: error, 
+              fallbackError 
+            });
+          });
+      });
+  }, [matrixUrls]);
 
   // Replace AudioManager refs with Elementary refs
 

@@ -4,8 +4,11 @@ note("c2 <eb2 <g2 g1>>".fast(2))
 ._scope()
 `.trim();
 
-// Default host URL for lineage sounds
+// Default host URL for lineage sounds (legacy static file server)
 export const DEFAULT_LINEAGE_SOUNDS_BUCKET_HOST = "https://ns9648k.web.sigma2.no";
+
+// Default REST service configuration
+export const DEFAULT_REST_SERVICE_HOST = "http://localhost:3004";
 
 // Get the current host URL (custom from localStorage or default)
 export const getLineageSoundsBucketHost = () => {
@@ -13,8 +16,25 @@ export const getLineageSoundsBucketHost = () => {
   return customUrl || DEFAULT_LINEAGE_SOUNDS_BUCKET_HOST;
 };
 
+// Get the REST service host URL (custom from localStorage or default)
+export const getRestServiceHost = () => {
+  const customUrl = localStorage.getItem('CUSTOM_REST_SERVICE_URL');
+  return customUrl || DEFAULT_REST_SERVICE_HOST;
+};
+
 // For compatibility with existing code
 export const LINEAGE_SOUNDS_BUCKET_HOST = getLineageSoundsBucketHost();
+
+// REST service endpoints
+export const REST_ENDPOINTS = {
+  EVORUNS_SUMMARY: '/evoruns/summary',
+  GENOME: (folderName, ulid) => `/evoruns/${folderName}/genome/${ulid}`,
+  FEATURES: (folderName, ulid) => `/evoruns/${folderName}/features/${ulid}`,
+  MATRIX: (folderName, stepName) => `/evoruns/${folderName}/matrix/${stepName}`,
+  FILES: (folderName, filePath) => `/files/${folderName}/${filePath}`,
+  RENDER_AUDIO: (folderName, ulid, duration, pitch, velocity) => `/evorenders/${folderName}/${ulid}/${duration}/${pitch}/${velocity}`,
+  RENDER_FILES: (folderName) => `/evorenders/${folderName}/files`
+};
 
 export const UNIT_TYPES = {
   TRAJECTORY: 'TRAJECTORY',

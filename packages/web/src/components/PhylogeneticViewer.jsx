@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Settings, Download, RefreshCw } from 'lucide-react';
 import * as d3 from 'd3';
 import { pruneTreeForContextSwitches } from './phylogenetic-tree-common';
-import { DEFAULT_LINEAGE_SOUNDS_BUCKET_HOST } from '../constants';
+import { DEFAULT_LINEAGE_SOUNDS_BUCKET_HOST, getLineageSoundsBucketHost, getRestServiceHost, REST_ENDPOINTS } from '../constants';
 
 // Enhance the POSITION_CONFIG to include zoom-related display settings
 const POSITION_CONFIG = {
@@ -1074,9 +1074,15 @@ const PhylogeneticViewer = ({
     if (currentPlayingNodeRef.current === d) return;
 
     try {
-      const fileName = `${d.data.id}-${d.data.duration}_${d.data.noteDelta}_${d.data.velocity}.wav`;
-      const currentHost = getLineageSoundsBucketHost();
-      const audioUrl = `${currentHost}/${experiment}/${evoRunId}/${fileName}`;
+      // Use REST service instead of static file serving
+      const restServiceHost = getRestServiceHost();
+      const folderName = `${experiment}/${evoRunId}`;
+      const ulid = d.data.id;
+      const duration = d.data.duration;
+      const pitch = d.data.noteDelta;
+      const velocity = d.data.velocity;
+      
+      const audioUrl = `${restServiceHost}${REST_ENDPOINTS.RENDER_AUDIO(folderName, ulid, duration, pitch, velocity)}`;
       
       console.log('Attempting to play:', audioUrl);
 
@@ -1326,8 +1332,8 @@ const PhylogeneticViewer = ({
                       <button
                         onClick={() => {
                           setLoadingError(null);
-                          const currentHost = getLineageSoundsBucketHost();
-                          const testUrl = `${currentHost}/${experiment}/${evoRunId}/test`;
+                          const restServiceHost = getRestServiceHost();
+                          const testUrl = `${restServiceHost}/evoruns/summary`;
                           setIsRetrying(true);
                           retryWithBackoff(testUrl);
                         }}
