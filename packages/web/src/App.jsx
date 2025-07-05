@@ -36,6 +36,7 @@ const TopBar = ({
 }) => {
   const [showRunSelector, setShowRunSelector] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({});
+  const dropdownRef = useRef(null);
 
   // Initialize expanded groups to show the latest group by default
   useEffect(() => {
@@ -47,6 +48,23 @@ const TopBar = ({
     }
   }, [evorunsSummary, expandedGroups]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowRunSelector(false);
+      }
+    };
+
+    if (showRunSelector) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showRunSelector]);
+
   const toggleGroup = (groupKey) => {
     setExpandedGroups(prev => ({
       ...prev,
@@ -55,18 +73,57 @@ const TopBar = ({
   };
 
   const selectRun = (folderName) => {
-    handleRunChange(folderName);
+    // Find the experiment class and step index for this specific evorun
+    let experimentClass = null;
+    let stepIndex = 0;
+    
+    if (evorunsSummary?.groups) {
+      // Search through all groups to find the experiment class containing this evorun
+      for (const dateGroup of Object.values(evorunsSummary.groups)) {
+        for (const [experimentKey, experiments] of Object.entries(dateGroup)) {
+          const runIndex = experiments.findIndex(exp => exp.folderName === folderName);
+          if (runIndex !== -1) {
+            experimentClass = experimentKey;
+            stepIndex = runIndex;
+            break;
+          }
+        }
+        if (experimentClass) break;
+      }
+    }
+    
+    if (experimentClass) {
+      // Update both the run (to experiment class) and step (to index within that class)
+      handleRunChange(experimentClass);
+      handleIndexChange(stepIndex);
+    } else {
+      // Fallback to old behavior if we can't find the experiment class
+      handleRunChange(folderName);
+    }
+    
     setShowRunSelector(false);
   };
 
   // Find the display name for the selected run
   const getSelectedRunDisplayName = () => {
     if (!selectedRun) return 'Select Run';
+    
+    // If we have evorunsSummary, try to show the specific evorun name within the experiment class
+    if (evorunsSummary?.groups && selectedIndex !== undefined) {
+      for (const dateGroup of Object.values(evorunsSummary.groups)) {
+        if (dateGroup[selectedRun] && dateGroup[selectedRun][selectedIndex]) {
+          const specificRun = dateGroup[selectedRun][selectedIndex];
+          return `${selectedRun.replace(/_/g, ' ')} - ${specificRun.ulid}`;
+        }
+      }
+    }
+    
+    // Fallback to just showing the experiment class name
     return selectedRun.replace(/_/g, ' ');
   };
 
   return (
-    <div className="p-2 bg-gray-900/80 backdrop-blur">
+    <div className="p-2 bg-gray-900/80 backdrop-blur relative z-50">
       <div className="flex items-center gap-2">
         <button 
           onClick={() => setShowUnits(!showUnits)}
@@ -75,7 +132,7 @@ const TopBar = ({
           <Play size={16} />
         </button>
 
-        <div className="flex-1 relative">
+        <div className="flex-1 relative" ref={dropdownRef}>
           {/* Custom dropdown for grouped runs */}
           <button
             onClick={() => setShowRunSelector(!showRunSelector)}
@@ -86,7 +143,7 @@ const TopBar = ({
           </button>
           
           {showRunSelector && evorunsSummary?.groups && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded max-h-96 overflow-y-auto z-50">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded max-h-96 overflow-y-auto z-[9999] shadow-xl">
               {Object.entries(evorunsSummary.groups)
                 .sort(([a], [b]) => b.localeCompare(a)) // Sort dates descending (newest first)
                 .map(([dateKey, dateGroup]) => (
@@ -141,7 +198,7 @@ const TopBar = ({
           
           {/* Fallback to simple dropdown if no grouped data */}
           {showRunSelector && !evorunsSummary?.groups && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded max-h-96 overflow-y-auto z-50">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded max-h-96 overflow-y-auto z-[9999] shadow-xl">
               {runs.map(run => (
                 <button
                   key={run}
