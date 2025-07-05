@@ -443,6 +443,8 @@ function MainApp() {
         // Store the raw summary for use in the grouped dropdown
         setEvorunsSummary(summary);
         fetchedIndexRef.current = true;
+        // Clear any existing error message on successful load
+        setSoundSourceError(null);
       })
       .catch(error => {
         // Fallback to static file serving if REST service is unavailable
@@ -455,6 +457,8 @@ function MainApp() {
           .then(index => {
             setLineageTreesIndex(index);
             fetchedIndexRef.current = true;
+            // Clear any existing error message on successful load
+            setSoundSourceError(null);
           })
           .catch(fallbackError => {
             setSoundSourceError('Neither REST service nor static file source can be reached. Please check your settings or choose another source.');
@@ -495,6 +499,8 @@ function MainApp() {
       .then(treeJson => {
         setTreeData(treeJson);
         fetchedTreesRef.current.add(treePath);
+        // Clear any existing error message on successful load
+        setSoundSourceError(null);
       })
       .catch(error => {
         // Fallback to static file serving if REST service is unavailable
@@ -507,6 +513,8 @@ function MainApp() {
           .then(treeJson => {
             setTreeData(treeJson);
             fetchedTreesRef.current.add(treePath);
+            // Clear any existing error message on successful load
+            setSoundSourceError(null);
           })
           .catch(fallbackError => {
             setSoundSourceError('Neither REST service nor static file source can be reached for tree data. Please check your settings or choose another source.');
