@@ -359,7 +359,7 @@ const HeatmapViewer = ({
     if (i >= 0 && i < matrix.length && j >= 0 && j < matrix[0].length && matrix[i][j]) {
       const cell = matrix[i][j];
       
-      // Use the same approach as PhylogeneticViewer - pass data to onCellHover
+      // Use the same approach as PhylogeneticViewer - pass data to onCellHover for hover
       if (onCellHover && cell.genomeId) {
         const config = matrixData.evolutionRunConfig;
         onCellHover({
@@ -382,6 +382,62 @@ const HeatmapViewer = ({
     }
   }, [matrixData, hasAudioInteraction, useSquareCells, experiment, evoRunId, onCellHover, selectedGeneration]);
 
+  // Add click handler for adding sounds to sequence (similar to PhylogeneticViewer)
+  const handleCanvasClick = useCallback((event) => {
+    if (!matrixData || !canvasRef.current || !hasAudioInteraction) return;
+
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = (event.clientX - rect.left - transformRef.current.x) / transformRef.current.k;
+    const y = (event.clientY - rect.top - transformRef.current.y) / transformRef.current.k;
+    
+    const matrix = currentMatrixRef.current;
+    if (!matrix) return;
+
+    // Calculate cell dimensions
+    let cellWidth, cellHeight;
+    if (useSquareCells) {
+      const size = Math.min(canvasRef.current.width / matrix[0].length, canvasRef.current.height / matrix.length);
+      cellWidth = cellHeight = size;
+    } else {
+      cellWidth = canvasRef.current.width / matrix[0].length;
+      cellHeight = canvasRef.current.height / matrix.length;
+    }
+
+    // Get cell indices
+    const i = Math.floor(y / cellHeight);
+    const j = Math.floor(x / cellWidth);
+
+    // Check if within bounds and cell exists
+    if (i >= 0 && i < matrix.length && j >= 0 && j < matrix[0].length && matrix[i][j]) {
+      const cell = matrix[i][j];
+      
+      // Use the same approach as PhylogeneticViewer - pass data to onCellHover with addToSequence flag
+      if (onCellHover && cell.genomeId) {
+        const config = matrixData.evolutionRunConfig;
+        onCellHover({
+          data: {
+            id: cell.genomeId,
+            genomeId: cell.genomeId,
+            score: cell.score,
+            generation: selectedGeneration,
+            position: { i, j },
+            duration: config.classScoringDurations[0],
+            noteDelta: config.classScoringNoteDeltas[0],
+            velocity: config.classScoringVelocities[0]
+          },
+          experiment,
+          evoRunId,
+          config: {
+            addToSequence: true, // This is the key flag for SequencingUnit
+            duration: config.classScoringDurations[0],
+            noteDelta: config.classScoringNoteDeltas[0],
+            velocity: config.classScoringVelocities[0]
+          }
+        });
+      }
+    }
+  }, [matrixData, hasAudioInteraction, useSquareCells, experiment, evoRunId, onCellHover, selectedGeneration]);
+
   // Update return statement to include mouse events
   return (
     <div 
@@ -394,11 +450,7 @@ const HeatmapViewer = ({
         className="w-full h-full"
         style={{ display: 'block' }}
         onMouseMove={handleMouseMove}
-        onClick={() => {
-          if (!hasAudioInteraction) {
-            onAudioInteraction();
-          }
-        }}
+        onClick={hasAudioInteraction ? handleCanvasClick : () => onAudioInteraction()}
       />
       
       {!hasAudioInteraction && (
