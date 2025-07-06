@@ -117,6 +117,7 @@ const HeatmapViewer = ({
   const [selectedColormap, setSelectedColormap] = useState('plasma');
   const [theme, setTheme] = useState('dark');
   const [useSquareCells, setUseSquareCells] = useState(true);
+  const [silentMode, setSilentMode] = useState(false);
 
   // Add matrix data loading effect with hybrid approach
   useEffect(() => {
@@ -171,8 +172,6 @@ const HeatmapViewer = ({
           });
       });
   }, [matrixUrls]);
-
-  // Remove all Elementary audio setup since we'll use the same system as PhylogeneticViewer
 
   // Simplified settings panel - remove audio-specific controls since they're handled by the shared audio system
   const renderSettings = () => (
@@ -332,9 +331,22 @@ const HeatmapViewer = ({
     }
   }, [matrixData, selectedGeneration]);
 
+  // Handle keyboard events for silent mode toggle
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Alt' && e.type === 'keydown') {
+        e.preventDefault();
+        setSilentMode(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Add mouse interaction handlers
   const handleMouseMove = useCallback((event) => {
-    if (!matrixData || !canvasRef.current || !hasAudioInteraction) return;
+    if (!matrixData || !canvasRef.current || !hasAudioInteraction || silentMode) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
     const x = (event.clientX - rect.left - transformRef.current.x) / transformRef.current.k;
@@ -407,7 +419,7 @@ const HeatmapViewer = ({
       // Clear current hovered cell when mouse is not over any valid cell
       currentHoveredCellRef.current = null;
     }
-  }, [matrixData, hasAudioInteraction, useSquareCells, experiment, evoRunId, onCellHover, selectedGeneration]);
+  }, [matrixData, hasAudioInteraction, useSquareCells, experiment, evoRunId, onCellHover, selectedGeneration, silentMode]);
 
   // Add click handler for adding sounds to sequence (similar to PhylogeneticViewer)
   const handleCanvasClick = useCallback((event) => {
@@ -465,6 +477,40 @@ const HeatmapViewer = ({
     }
   }, [matrixData, hasAudioInteraction, useSquareCells, experiment, evoRunId, onCellHover, selectedGeneration]);
 
+  // SVG export function
+  const handleExportSVG = useCallback(() => {
+    if (!canvasRef.current) return;
+    
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const width = canvasRef.current.width;
+    const height = canvasRef.current.height;
+    
+    svg.setAttribute('width', width);
+    svg.setAttribute('height', height);
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    
+    const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+    img.setAttribute('x', 0);
+    img.setAttribute('y', 0);
+    img.setAttribute('width', width);
+    img.setAttribute('height', height);
+    img.setAttribute('href', canvasRef.current.toDataURL('image/png'));
+    
+    svg.appendChild(img);
+    
+    const svgString = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([svgString], { type: 'image/svg+xml' });
+    
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `heatmap-${Date.now()}.svg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, []);
+
   // Update return statement to include mouse events
   return (
     <div 
@@ -504,6 +550,32 @@ const HeatmapViewer = ({
           </div>
         </div>
       )}
+
+      {/* Bottom-left instructions and controls */}
+      <div className="fixed bottom-2 left-2 text-white/70 text-xs flex items-center gap-2 z-50">
+        <button
+          onClick={handleExportSVG}
+          className="p-1.5 rounded bg-gray-800/80 hover:bg-gray-700/80 text-white mr-2"
+          title="Export as SVG"
+        >
+          <Download size={16} />
+        </button>
+        <span>Hover: {silentMode ? 'navigation only' : 'play sound'} • Click: add to sequence</span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setSilentMode(prev => !prev);
+          }}
+          className={`px-2 py-1 rounded text-xs transition-colors ${
+            silentMode 
+              ? 'bg-blue-600 text-white' 
+              : 'bg-gray-800/80 text-gray-400 hover:text-white'
+          }`}
+        >
+          {silentMode ? 'Silent Mode On' : 'Silent Mode Off'}
+        </button>
+        <span className="text-gray-500">(Alt to toggle)</span>
+      </div>
 
       {/* Settings Panel */}
       {showSettings && renderSettings()}
