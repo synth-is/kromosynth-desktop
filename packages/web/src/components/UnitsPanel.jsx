@@ -282,10 +282,6 @@ export default function UnitsPanel({
   // Keep only ONE hover handler - This is the only useEffect we need for hover events
   useEffect(() => {
     if (!selectedUnitId || !onCellHover) {
-      console.log('UnitsPanel bail conditions:', {
-        noSelectedUnit: !selectedUnitId,
-        noHoverData: !onCellHover
-      });
       return;
     }
   
@@ -299,19 +295,17 @@ export default function UnitsPanel({
     if (formattedData) {
       const unit = unitsRef.current.get(selectedUnitId);
       if (!unit) return;
-  
-      console.log('Processing cell hover:', {
-        unitType: unit.type,
-        addToSequence: onCellHover.config?.addToSequence,
-        formattedData
-      });
+
+      // Also call the context handler
+      if (handleCellHover) {
+        handleCellHover(formattedData);
+      }
 
       if (unit.type === UNIT_TYPES.TRAJECTORY) {
         unit.handleCellHover(formattedData);
       } else if (unit.type === UNIT_TYPES.SEQUENCING) {
         // Check if this is a click (addToSequence) or just a hover
         if (onCellHover.config?.addToSequence) {
-          console.log('Adding to sequence:', formattedData);
           unit.toggleSequenceItem(formattedData);
           forceSequenceUpdate(selectedUnitId);
         }
@@ -319,7 +313,9 @@ export default function UnitsPanel({
         unit.handleCellHover(formattedData);
       }
     }
-  }, [selectedUnitId, onCellHover]);
+  }, [selectedUnitId, onCellHover, handleCellHover]);
+
+  // ...existing code...
 
   // Add new state for trajectory recording status
   const [recordingStatus, setRecordingStatus] = useState({});
@@ -822,7 +818,8 @@ const TrajectoryEventParams = ({
         {!isLoopingMode && (
           <div className="flex gap-2">
             <button
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 if (!isRecording) {
                   const trajectoryId = trajectoryUnit.startTrajectoryRecording();
                   setRecordingStatus(prev => ({ ...prev, [unit.id]: true }));
@@ -850,16 +847,16 @@ const TrajectoryEventParams = ({
             <div className="flex items-center gap-2 px-2 py-1 bg-gray-700/50 rounded-sm">
               <span className="text-xs text-gray-300">
                 Explore
-              </span>
-              <button
-                onClick={() => {
-                  const element = document.querySelector(`#explore-params-${unit.id}`);
-                  element.style.display = element.style.display === 'none' ? 'block' : 'none';
-                }}
-                className="p-1 text-xs bg-gray-600/50 hover:bg-gray-600 text-white rounded ml-auto"
-              >
-                ▼
-              </button>
+              </span>                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const element = document.querySelector(`#explore-params-${unit.id}`);
+                    element.style.display = element.style.display === 'none' ? 'block' : 'none';
+                  }}
+                  className="p-1 text-xs bg-gray-600/50 hover:bg-gray-600 text-white rounded ml-auto"
+                >
+                  ▼
+                </button>
             </div>
 
             <div 
@@ -906,7 +903,8 @@ const TrajectoryEventParams = ({
                   Trajectory {String(trajectoryId).slice(-4)}
                 </span>
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (isPlaying) {
                       trajectoryUnit.stopTrajectory(trajectoryId);
                     } else {
@@ -923,7 +921,8 @@ const TrajectoryEventParams = ({
                   {isPlaying ? 'Stop' : 'Play'}
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     trajectoryUnit.removeTrajectory(trajectoryId);
                     forceTrajectoryUpdate(unit.id);
                   }}
@@ -932,7 +931,8 @@ const TrajectoryEventParams = ({
                   Remove
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     const element = document.querySelector(`#trajectory-${trajectoryId}-events`);
                     element.style.display = element.style.display === 'none' ? 'block' : 'none';
                   }}
@@ -1010,7 +1010,8 @@ const renderLoopingControls = (unit) => {
         <div className="flex-1" />
         {loopingVoices.length > 0 && (
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               loopingVoices.forEach(voice => {
                 loopingUnit.stopLoopingVoice(voice.id);
               });
@@ -1022,7 +1023,8 @@ const renderLoopingControls = (unit) => {
           </button>
         )}
         <button
-          onClick={() => {
+          onClick={(e) => {
+            e.stopPropagation();
             const element = document.querySelector(`#looping-voices-${unit.id}`);
             element.style.display = element.style.display === 'none' ? 'block' : 'none';
           }}
@@ -1045,6 +1047,7 @@ const renderLoopingControls = (unit) => {
               type="checkbox"
               checked={unit.syncEnabled}
               onChange={(e) => {
+                e.stopPropagation();
                 onUpdateUnit(unit.id, {
                   ...unit,
                   syncEnabled: e.target.checked
@@ -1073,23 +1076,24 @@ const renderLoopingControls = (unit) => {
                   {voice.id.slice(-6)}
                 </span>
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     loopingUnit.stopLoopingVoice(voice.id);
                     forceTrajectoryUpdate(unit.id);
                   }}
                   className="px-1.5 py-0.5 text-xs rounded bg-red-600/50 text-white hover:bg-red-600"
                 >
                   Stop
-                </button>
-                <button
-                  onClick={() => {
-                    const element = document.querySelector(`#looping-voice-${voice.id}`);
-                    element.style.display = element.style.display === 'none' ? 'block' : 'none';
-                  }}
-                  className="p-1 text-xs bg-gray-600/50 hover:bg-gray-600 text-white rounded ml-auto"
-                >
-                  ▼
-                </button>
+                </button>                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const element = document.querySelector(`#looping-voice-${voice.id}`);
+                      element.style.display = element.style.display === 'none' ? 'block' : 'none';
+                    }}
+                    className="p-1 text-xs bg-gray-600/50 hover:bg-gray-600 text-white rounded ml-auto"
+                  >
+                    ▼
+                  </button>
               </div>
 
               {/* Individual Voice Parameters */}
@@ -1202,7 +1206,8 @@ const renderLoopingControls = (unit) => {
                     {item.genomeId.slice(-6)}
                   </span>
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       sequencingUnit.removeSequenceItem(item.genomeId);
                       forceSequenceUpdate(unit.id);
                     }}
@@ -1442,8 +1447,8 @@ const renderLoopingControls = (unit) => {
                 ${selectedUnitId === unit.id ? 'ring-1 ring-blue-500' : ''}`}
             >
               {/* Controls */}
-              <div className="pointer-events-none flex flex-col gap-2">
-                <div className="flex items-center gap-1.5 pointer-events-auto">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-1.5">
                   <button
                     onClick={(e) => handleActiveToggle(e, unit)}
                     className={`w-6 h-6 rounded-sm text-sm flex items-center justify-center ${unit.active 
@@ -1472,7 +1477,7 @@ const renderLoopingControls = (unit) => {
                   </button>
                 </div>
                 
-                <div className="flex flex-col gap-0.5 pointer-events-auto">
+                <div className="flex flex-col gap-0.5">
                   <input
                     type="range"
                     min="-60"

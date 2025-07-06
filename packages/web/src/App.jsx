@@ -248,6 +248,7 @@ function MainContent({
   soundSourceError,
   selectedUnitId,
   handleCellHover,
+  lastHoverData,
   ...props 
 }) {
   // Show a persistent error banner at the bottom if soundSourceError, but keep all UI accessible
@@ -306,7 +307,7 @@ function MainContent({
               onToggleState={props.handleToggleState}
               onUpdateVolume={props.handleUpdateVolume}
               onUpdateUnit={props.handleUpdateUnit}
-              onCellHover={props.lastHoverData}
+              onCellHover={lastHoverData}
               treeData={treeData}
             />
             {selectedUnitId && (
@@ -387,9 +388,10 @@ function MainApp() {
   console.log('useRef hooks successful');
 
   const handleCellHover = useCallback((cellData) => {
+    // Always set the hover data for the UnitsPanel to receive
+    setLastHoverData(cellData);
+    
     if (selectedUnitId && showUnits) {
-      console.log('MainApp: cell hover received:', { selectedUnitId, cellData });
-      setLastHoverData(cellData);  // Store the hover data
       setUnits(prevUnits => 
         prevUnits.map(unit => 
           unit.id === selectedUnitId 
@@ -397,31 +399,9 @@ function MainApp() {
             : unit
         )
       );
-      
-      // IMPORTANT: Also trigger the actual unit's handleCellHover method
-      // This was the missing piece that prevented audio from playing
-      if (window.getUnitInstance) {
-        const unitInstance = window.getUnitInstance(selectedUnitId);
-        if (unitInstance && unitInstance.handleCellHover) {
-          // Format the cell data properly for the unit
-          const formattedData = {
-            genomeId: cellData.data.id,
-            experiment: cellData.experiment,
-            evoRunId: cellData.evoRunId,
-            duration: cellData.config?.duration || cellData.data.duration,
-            noteDelta: cellData.config?.noteDelta || cellData.data.noteDelta,
-            velocity: cellData.config?.velocity || cellData.data.velocity,
-            config: cellData.config
-          };
-          
-          console.log('MainApp: Calling unit handleCellHover:', formattedData);
-          unitInstance.handleCellHover(formattedData);
-        }
-      }
-      
-      return cellData;
     }
-    return null;
+    
+    return cellData;
   }, [selectedUnitId, showUnits]);
 
   // Group all useEffect calls together
@@ -736,6 +716,7 @@ function MainApp() {
     hasAudioInteraction={hasAudioInteraction}
     setHasAudioInteraction={setHasAudioInteraction}
     handleCellHover={handleCellHover}
+    lastHoverData={lastHoverData}
   />;
 }
 
