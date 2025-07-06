@@ -1,4 +1,4 @@
-import { LINEAGE_SOUNDS_BUCKET_HOST } from '../constants';
+import { getRestServiceHost, REST_ENDPOINTS, getLineageSoundsBucketHost } from '../constants';
 
 // WebSocket server URL based on environment
 // Use secure WebSocket (wss://) in production, regular WebSocket (ws://) in development
@@ -548,8 +548,10 @@ class SoundRenderer {
   async renderSound(soundData, renderParams, onComplete, onProgress) {
     const { genomeId, experiment, evoRunId } = soundData;
 
-    // Construct genome URL from sound data
-    const genomeUrl = `${LINEAGE_SOUNDS_BUCKET_HOST}/evoruns/${evoRunId}/genome_${evoRunId}_${genomeId}.json.gz`;
+    // Construct genome URL from sound data using REST service
+    // evoRunId should now contain the full folder name
+    const restHost = getRestServiceHost();
+    const genomeUrl = `${restHost}${REST_ENDPOINTS.GENOME(evoRunId, genomeId)}`;
     
     console.log('SoundRenderer.renderSound:', { 
       soundData, 
@@ -559,6 +561,22 @@ class SoundRenderer {
 
     // Delegate to renderGenome method
     return this.renderGenome(genomeUrl, renderParams, onComplete, onProgress);
+  }
+
+  /**
+   * Get fallback genome URL from sound data (for backward compatibility)
+   * @param {Object} soundData - Data about the sound (genomeId, experiment, evoRunId)
+   * @returns {string} - URL to genome JSON data
+   */
+  static getFallbackGenomeUrl(soundData) {
+    const { genomeId, experiment, evoRunId } = soundData;
+    if (!genomeId || !evoRunId) {
+      throw new Error('Missing required parameters for genome URL');
+    }
+    
+    // Use the legacy static server format
+    const staticHost = getLineageSoundsBucketHost();
+    return `${staticHost}/evoruns/${evoRunId}/genome_${evoRunId}_${genomeId}.json.gz`;
   }
 
   /**

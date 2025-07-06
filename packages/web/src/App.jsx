@@ -783,10 +783,13 @@ function getEvoRunIdFromSelectedStep(treeJSONfilePath) {
   }
   console.log("Selected step:", selectedStep);
   console.log("Suffix index:", suffixIndex);
-  // const evoRunId = selectedStep.substring(selectedStep.indexOf("tree_")+5, suffixIndex);
-  const evoRunId = selectedStep;
-  console.log("Evo run ID:", evoRunId);
-  return evoRunId;
+  
+  // Extract the folder name from the tree path
+  // Tree path format is: folderName/ulid
+  // We need to return the folderName part
+  const folderName = treeJSONfilePathParts[0];
+  console.log("Folder name:", folderName);
+  return folderName;
 }
 
 function getMatrixUrlFromTreePath(treePath) {

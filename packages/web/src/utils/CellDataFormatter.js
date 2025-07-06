@@ -1,4 +1,4 @@
-import { LINEAGE_SOUNDS_BUCKET_HOST } from '../constants';
+import { getRestServiceHost, REST_ENDPOINTS } from '../constants';
 import VoiceParameterRegistry from './VoiceParameterRegistry';
 
 export class CellDataFormatter {
@@ -50,8 +50,9 @@ export class CellDataFormatter {
     const isRendered = config?.isRendered || false;
     const renderKey = isRendered ? `${data.id}-${duration}_${noteDelta}_${velocity}` : data.id;
     
-    // Build audio URL using appropriate parameters
-    const audioUrl = `${LINEAGE_SOUNDS_BUCKET_HOST}/evorenders/${evoRunId}/${data.id}-${duration}_${noteDelta}_${velocity}.wav`;
+    // Build audio URL using REST service
+    const restHost = getRestServiceHost();
+    const audioUrl = `${restHost}${REST_ENDPOINTS.RENDER_AUDIO(evoRunId, data.id, duration, noteDelta, velocity)}`;
 
     // Ensure we pass through the config callbacks, but update the values
     const updatedConfig = {

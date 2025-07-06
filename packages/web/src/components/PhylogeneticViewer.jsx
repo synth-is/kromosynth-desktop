@@ -1076,7 +1076,8 @@ const PhylogeneticViewer = ({
     try {
       // Use REST service instead of static file serving
       const restServiceHost = getRestServiceHost();
-      const folderName = `${experiment}/${evoRunId}`;
+      // evoRunId should now contain the full folder name
+      const folderName = evoRunId;
       const ulid = d.data.id;
       const duration = d.data.duration;
       const pitch = d.data.noteDelta;

@@ -3,7 +3,7 @@ import { Settings, Download } from 'lucide-react';
 import * as d3 from 'd3';
 import {el} from '@elemaudio/core';
 import WebRenderer from '@elemaudio/web-renderer';
-import { LINEAGE_SOUNDS_BUCKET_HOST } from '../constants';
+import { getRestServiceHost, REST_ENDPOINTS } from '../constants';
 
 // Add COLORMAP_OPTIONS before component
 const COLORMAP_OPTIONS = {
@@ -285,7 +285,8 @@ const HeatmapViewer = ({
         await cleanupOldestCache();
         
         const fileName = `${cell.genomeId}-${config.classScoringDurations[0]}_${config.classScoringNoteDeltas[0]}_${config.classScoringVelocities[0]}.wav`;
-        const audioUrl = `${LINEAGE_SOUNDS_BUCKET_HOST}/${experiment}/${evoRunId}/${fileName}`;
+        const restHost = getRestServiceHost();
+        const audioUrl = `${restHost}${REST_ENDPOINTS.RENDER_AUDIO(evoRunId, cell.genomeId, config.classScoringDurations[0], config.classScoringNoteDeltas[0], config.classScoringVelocities[0])}`;
 
         const response = await fetch(audioUrl, {
           mode: 'cors',

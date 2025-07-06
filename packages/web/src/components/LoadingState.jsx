@@ -1,4 +1,4 @@
-import { LINEAGE_SOUNDS_BUCKET_HOST } from '../constants';
+import { getRestServiceHost } from '../constants';
 
 export const LoadingState = ({ message, error, showSettings }) => {
   return (
@@ -7,7 +7,7 @@ export const LoadingState = ({ message, error, showSettings }) => {
         <div className="text-white mb-4">{message}</div>
         {error && (
           <div className="text-red-400 text-sm space-y-2">
-            <p>Unable to reach sound source at {LINEAGE_SOUNDS_BUCKET_HOST}</p>
+            <p>Unable to reach sound source at {getRestServiceHost()}</p>
             <p>
               Please check your connection or {showSettings && 'use the settings panel to '}
               configure a different source

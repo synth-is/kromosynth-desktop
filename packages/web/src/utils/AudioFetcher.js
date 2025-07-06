@@ -1,5 +1,5 @@
 import SoundRenderer from './SoundRenderer';
-import { LINEAGE_SOUNDS_BUCKET_HOST } from '../constants';
+import { getRestServiceHost, REST_ENDPOINTS, getLineageSoundsBucketHost } from '../constants';
 
 /**
  * AudioFetcher - A utility class to get audio buffers either from WAV files or from the SoundRenderer
@@ -16,8 +16,10 @@ class AudioFetcher {
       throw new Error('Missing required parameters for genome URL');
     }
     
-    // Format: https://server.com/evoruns/RUN_ID/genome_RUN_ID_GENOME_ID.json.gz
-    return `${LINEAGE_SOUNDS_BUCKET_HOST}/evorenders/${evoRunId}/genome_${evoRunId}_${genomeId}.json.gz`;
+    // Use REST service endpoint for genome data
+    // evoRunId should now contain the full folder name
+    const restHost = getRestServiceHost();
+    return `${restHost}${REST_ENDPOINTS.GENOME(evoRunId, genomeId)}`;
   }
   
   /**
@@ -30,8 +32,41 @@ class AudioFetcher {
     const { genomeId, evoRunId } = soundData;
     const { duration, pitch, velocity } = renderParams;
     
-    // Format: https://server.com/evorenders/RUN_ID/GENOME_ID-DURATION_PITCH_VELOCITY.wav
-    return `${LINEAGE_SOUNDS_BUCKET_HOST}/evorenders/${evoRunId}/${genomeId}-${duration}_${pitch}_${velocity}.wav`;
+    // Use REST service endpoint for rendered WAV files
+    // evoRunId should now contain the full folder name
+    const restHost = getRestServiceHost();
+    return `${restHost}${REST_ENDPOINTS.RENDER_AUDIO(evoRunId, genomeId, duration, pitch, velocity)}`;
+  }
+  
+  /**
+   * Get fallback genome JSON URL from sound data (for backward compatibility)
+   * @param {Object} soundData - Data about the sound (genomeId, experiment, evoRunId)
+   * @returns {string} - URL to genome JSON data
+   */
+  static getFallbackGenomeUrl(soundData) {
+    const { genomeId, experiment, evoRunId } = soundData;
+    if (!genomeId || !evoRunId) {
+      throw new Error('Missing required parameters for genome URL');
+    }
+    
+    // Use the legacy static server format
+    const staticHost = getLineageSoundsBucketHost();
+    return `${staticHost}/evoruns/${evoRunId}/genome_${evoRunId}_${genomeId}.json.gz`;
+  }
+  
+  /**
+   * Get fallback WAV URL from sound data (for backward compatibility)
+   * @param {Object} soundData - Data about the sound (genomeId, experiment, evoRunId)
+   * @param {Object} renderParams - Parameters for rendering (duration, pitch, velocity)
+   * @returns {string} - URL to the WAV file
+   */
+  static getFallbackWavUrl(soundData, renderParams) {
+    const { genomeId, evoRunId } = soundData;
+    const { duration, pitch, velocity } = renderParams;
+    
+    // Use the legacy static server format
+    const staticHost = getLineageSoundsBucketHost();
+    return `${staticHost}/evorenders/${evoRunId}/${genomeId}-${duration}_${pitch}_${velocity}.wav`;
   }
   
   /**
@@ -100,7 +135,36 @@ class AudioFetcher {
       // If response is not OK, throw error to trigger fallback
       throw new Error(`Failed to fetch WAV file: ${response.status}`);
     } catch (error) {
-      console.log(`AudioFetcher: WAV fetch failed (${error.message}), using renderer fallback`);
+      console.log(`AudioFetcher: WAV fetch failed (${error.message}), trying fallback static server`);
+      
+      // Try fallback static server before going to renderer
+      try {
+        const fallbackWavUrl = this.getFallbackWavUrl(soundData, renderParams);
+        const fallbackResponse = await fetch(fallbackWavUrl);
+        if (fallbackResponse.ok) {
+          const arrayBuffer = await fallbackResponse.arrayBuffer();
+          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+          
+          // Cache the buffer for future use
+          if (!this.audioBufferCache) this.audioBufferCache = {};
+          this.audioBufferCache[cacheKey] = audioBuffer;
+          
+          // Return the audio buffer via both promise and callback
+          if (onComplete) {
+            onComplete({ 
+              success: true, 
+              audioBuffer, 
+              source: 'wav-fallback',
+              cacheKey
+            });
+          }
+          return audioBuffer;
+        }
+        
+        throw new Error(`Fallback WAV fetch failed: ${fallbackResponse.status}`);
+      } catch (fallbackError) {
+        console.log(`AudioFetcher: Fallback WAV fetch failed (${fallbackError.message}), using renderer fallback`);
+      }
       
       // Fall back to renderer
       try {
