@@ -295,6 +295,13 @@ function MainContent({
             />
           )}
         </div>
+        
+        {/* ViewSwitcher for switching between viewers */}
+        <ViewSwitcher 
+          activeView={props.currentView}
+          onViewChange={props.handleViewChange}
+        />
+        
         {props.showUnits && (
           <div className="fixed left-4 top-16 z-40">
             <UnitsPanel

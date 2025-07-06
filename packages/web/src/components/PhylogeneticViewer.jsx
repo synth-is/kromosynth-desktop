@@ -1135,6 +1135,13 @@ const PhylogeneticViewer = ({
     >
       {/* Silent Mode Indicator */}
       <div className="fixed bottom-2 left-2 text-white/70 text-xs flex items-center gap-2 z-50">
+        <button
+          onClick={handleExportSVG}
+          className="p-1.5 rounded bg-gray-800/80 hover:bg-gray-700/80 text-white mr-2"
+          title="Export as SVG"
+        >
+          <Download size={16} />
+        </button>
         <span>Hover: {silentMode ? 'navigation only' : 'play sound'} • Double-click: download</span>
         <button
           onClick={(e) => {
@@ -1152,28 +1159,7 @@ const PhylogeneticViewer = ({
         <span className="text-gray-500">(Alt to toggle)</span>
       </div>
 
-      {/* Add download button next to settings */}
-      <div className="absolute bottom-2 right-2 z-50 flex gap-2">
-        <button
-          onClick={handleExportSVG}
-          className="p-2 rounded-full bg-gray-800/80 hover:bg-gray-700/80 text-white"
-          title="Export as SVG"
-        >
-          <Download size={20} />
-        </button>
-        {/*
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowSettings(!showSettings);
-          }}
-          className="p-2 rounded-full bg-gray-800/80 hover:bg-gray-700/80 text-white"
-          title="Settings"
-        >
-          <Settings size={20} />
-        </button>
-        */}
-      </div>
+      {/* Removed the original download button since it's now in the left panel */}
 
       {/* Settings Panel */}
       {showSettings && (
