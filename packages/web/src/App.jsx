@@ -397,6 +397,28 @@ function MainApp() {
             : unit
         )
       );
+      
+      // IMPORTANT: Also trigger the actual unit's handleCellHover method
+      // This was the missing piece that prevented audio from playing
+      if (window.getUnitInstance) {
+        const unitInstance = window.getUnitInstance(selectedUnitId);
+        if (unitInstance && unitInstance.handleCellHover) {
+          // Format the cell data properly for the unit
+          const formattedData = {
+            genomeId: cellData.data.id,
+            experiment: cellData.experiment,
+            evoRunId: cellData.evoRunId,
+            duration: cellData.config?.duration || cellData.data.duration,
+            noteDelta: cellData.config?.noteDelta || cellData.data.noteDelta,
+            velocity: cellData.config?.velocity || cellData.data.velocity,
+            config: cellData.config
+          };
+          
+          console.log('MainApp: Calling unit handleCellHover:', formattedData);
+          unitInstance.handleCellHover(formattedData);
+        }
+      }
+      
       return cellData;
     }
     return null;
@@ -713,6 +735,7 @@ function MainApp() {
     handleUpdateUnit={handleUpdateUnit}
     hasAudioInteraction={hasAudioInteraction}
     setHasAudioInteraction={setHasAudioInteraction}
+    handleCellHover={handleCellHover}
   />;
 }
 

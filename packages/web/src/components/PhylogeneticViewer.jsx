@@ -584,16 +584,16 @@ const PhylogeneticViewer = ({
       
       // Log to inspect if generation data exists in the original dataset
       if (d.depth < 2) {
-        console.log("Node data sample:", {
-          id: d.data.id,
-          s: d.data.s,
-          depth: d.depth,
-          gN: d.data.gN,
-          generation: d.data.generation,
-          class: d.data.class,
-          name: d.data.name,
-          nodeData: d.data
-        });
+        // console.log("Node data sample:", {
+        //   id: d.data.id,
+        //   s: d.data.s,
+        //   depth: d.depth,
+        //   gN: d.data.gN,
+        //   generation: d.data.generation,
+        //   class: d.data.class,
+        //   name: d.data.name,
+        //   nodeData: d.data
+        // });
       }
       
       return {
