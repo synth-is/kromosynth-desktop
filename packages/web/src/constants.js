@@ -30,7 +30,7 @@ export const REST_ENDPOINTS = {
   EVORUNS_SUMMARY: '/evoruns/summary',
   GENOME: (folderName, ulid) => `/evoruns/${folderName}/genome/${ulid}`,
   FEATURES: (folderName, ulid) => `/evoruns/${folderName}/features/${ulid}`,
-  MATRIX: (folderName, stepName) => `/files/${folderName}/matrix_${folderName}_${stepName}.json`,
+  MATRIX: (folderName, stepName) => `/files/${folderName}/analysisResults/score-and-genome-matrices_${folderName}_step-500.json.gz`,
   FILES: (folderName, filePath) => `/files/${folderName}/${filePath}`,
   RENDER_AUDIO: (folderName, ulid, duration, pitch, velocity) => `/evorenders/${folderName}/${ulid}/${duration}/${pitch}/${velocity}`,
   RENDER_FILES: (folderName) => `/evorenders/${folderName}/files`

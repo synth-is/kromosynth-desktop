@@ -145,7 +145,20 @@ const HeatmapViewer = ({
         if (!response.ok) {
           throw new Error(`REST service failed: ${response.status}`);
         }
-        return response.json();
+        // Check if the response is gzipped
+        const contentType = response.headers.get('content-type');
+        const contentEncoding = response.headers.get('content-encoding');
+        
+        if (matrixUrls.restUrl.endsWith('.gz') || contentEncoding === 'gzip') {
+          // Handle gzipped response
+          return response.arrayBuffer().then(buffer => {
+            const decompressed = new DecompressionStream('gzip');
+            const stream = new Response(buffer).body.pipeThrough(decompressed);
+            return new Response(stream).text();
+          }).then(text => JSON.parse(text));
+        } else {
+          return response.json();
+        }
       })
       .then(data => {
         console.log('Matrix data loaded from REST service');
