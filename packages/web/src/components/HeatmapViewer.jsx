@@ -108,6 +108,8 @@ const HeatmapViewer = ({
   const containerRef = useRef(null);
   const transformRef = useRef(d3.zoomIdentity);
   const currentMatrixRef = useRef(null);
+  const hoverTimestampsRef = useRef(new Map()); // Add hover debouncing like PhylogeneticViewer
+  const currentHoveredCellRef = useRef(null); // Track currently hovered cell to prevent repeated triggers
 
   // All state - remove audio-related state
   const [matrixData, setMatrixData] = useState(null);
@@ -359,26 +361,51 @@ const HeatmapViewer = ({
     if (i >= 0 && i < matrix.length && j >= 0 && j < matrix[0].length && matrix[i][j]) {
       const cell = matrix[i][j];
       
-      // Use the same approach as PhylogeneticViewer - pass data to onCellHover for hover
-      if (onCellHover && cell.genomeId) {
-        const config = matrixData.evolutionRunConfig;
-        onCellHover({
-          data: {
-            id: cell.genomeId,
-            genomeId: cell.genomeId,
-            score: cell.score,
-            generation: selectedGeneration,
-            position: { i, j }
-          },
-          experiment,
-          evoRunId,
-          config: {
-            duration: config.classScoringDurations[0],
-            noteDelta: config.classScoringNoteDeltas[0],
-            velocity: config.classScoringVelocities[0]
+      // Create a unique cell identifier based on position and genomeId
+      const cellKey = `${i}-${j}-${cell.genomeId}`;
+      
+      // Only trigger if this is a different cell than the currently hovered one
+      if (currentHoveredCellRef.current !== cellKey) {
+        currentHoveredCellRef.current = cellKey;
+        
+        // Use the same approach as PhylogeneticViewer - pass data to onCellHover for hover
+        if (onCellHover && cell.genomeId) {
+          // Add debouncing logic like PhylogeneticViewer
+          const now = Date.now();
+          const lastHover = hoverTimestampsRef.current.get(cell.genomeId) || 0;
+          
+          // Same debouncing approach as PhylogeneticViewer
+          const minTimeBetweenHovers = 30; // ms, same as PhylogeneticViewer
+          
+          if (now - lastHover < minTimeBetweenHovers) {
+            console.log('Debouncing rapid hover on cell:', cell.genomeId);
+            return;
           }
-        });
+          
+          hoverTimestampsRef.current.set(cell.genomeId, now);
+          
+          const config = matrixData.evolutionRunConfig;
+          onCellHover({
+            data: {
+              id: cell.genomeId,
+              genomeId: cell.genomeId,
+              score: cell.score,
+              generation: selectedGeneration,
+              position: { i, j }
+            },
+            experiment,
+            evoRunId,
+            config: {
+              duration: config.classScoringDurations[0],
+              noteDelta: config.classScoringNoteDeltas[0],
+              velocity: config.classScoringVelocities[0]
+            }
+          });
+        }
       }
+    } else {
+      // Clear current hovered cell when mouse is not over any valid cell
+      currentHoveredCellRef.current = null;
     }
   }, [matrixData, hasAudioInteraction, useSquareCells, experiment, evoRunId, onCellHover, selectedGeneration]);
 
