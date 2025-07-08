@@ -366,7 +366,7 @@ function MainApp() {
 
   // Group all useState calls together
   const [selectedRun, setSelectedRun] = useState(() => 
-    searchParams.get('run') || 'evoConf_singleMap_refSingleEmbeddings_mfcc-statistics_pca_retrainIncr50_zscoreNSynthTrain_TE-AudioSubregions_XConSimFoc'
+    searchParams.get('run') || null
   );
   const [selectedIndex, setSelectedIndex] = useState(() => 
     parseInt(searchParams.get('step')) || 0
