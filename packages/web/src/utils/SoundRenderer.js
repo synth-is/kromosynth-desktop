@@ -137,6 +137,10 @@ class SoundRenderer {
     this.pendingRenders = new Map();
     // Cache to track which render combinations have been completed
     this.completedRenders = new Set();
+    // Cache to store actual AudioBuffer results
+    this.audioBufferCache = new Map();
+    // Maximum number of cached audio buffers to prevent memory issues
+    this.maxCacheSize = 100;
     // WebSocket Worker
     this.worker = null;
     // Queue for messages waiting for worker initialization
@@ -257,6 +261,12 @@ class SoundRenderer {
       this.completedRenders.add(renderKey);
       this.pendingRenders.delete(renderKey);
       
+      // Cache the AudioBuffer for future use
+      this.audioBufferCache.set(renderKey, audioBuffer);
+      
+      // Manage cache size to prevent memory issues
+      this.manageCacheSize();
+      
       // Extract genomeId from renderKey
       const genomeIdMatch = renderKey.match(/(.+?)-\d+_/);
       const genomeId = genomeIdMatch ? genomeIdMatch[1] : null;
@@ -341,10 +351,12 @@ class SoundRenderer {
     // Check if we've already rendered this configuration
     if (this.completedRenders.has(renderKey)) {
       console.log('SoundRenderer: Render already completed:', renderKey);
+      const cachedAudioBuffer = this.audioBufferCache.get(renderKey);
       if (onComplete) {
         onComplete({
           success: true,
           renderKey,
+          audioBuffer: cachedAudioBuffer,
           cached: true
         });
       }
@@ -396,6 +408,12 @@ class SoundRenderer {
             
             if (result.success) {
               this.completedRenders.add(renderKey);
+              // Cache the AudioBuffer for future use
+              if (result.audioBuffer) {
+                this.audioBufferCache.set(renderKey, result.audioBuffer);
+                // Manage cache size to prevent memory issues
+                this.manageCacheSize();
+              }
               if (onComplete) {
                 onComplete(result);
               }
@@ -598,10 +616,41 @@ class SoundRenderer {
   }
   
   /**
+   * Get cached AudioBuffer if available
+   */
+  getCachedAudioBuffer(genomeDataUrl, renderParams) {
+    const { duration, pitch, velocity } = renderParams;
+    const renderKey = `${genomeDataUrl}-${duration}_${pitch}_${velocity}`;
+    return this.audioBufferCache.get(renderKey);
+  }
+  
+  /**
+   * Check if we have a cached AudioBuffer for the given parameters
+   */
+  hasCachedAudioBuffer(genomeDataUrl, renderParams) {
+    const { duration, pitch, velocity } = renderParams;
+    const renderKey = `${genomeDataUrl}-${duration}_${pitch}_${velocity}`;
+    return this.audioBufferCache.has(renderKey);
+  }
+  
+  /**
+   * Get cache statistics for debugging
+   */
+  getCacheStats() {
+    return {
+      completedRenders: this.completedRenders.size,
+      cachedAudioBuffers: this.audioBufferCache.size,
+      pendingRenders: this.pendingRenders.size,
+      currentRendersByGenome: this.currentRendersByGenome.size
+    };
+  }
+  
+  /**
    * Clear the render caches
    */
   clearCache() {
     this.completedRenders.clear();
+    this.audioBufferCache.clear();
   }
   
   /**
@@ -612,6 +661,10 @@ class SoundRenderer {
     this.responseCallbacks.clear();
     this.pendingRenders.clear();
     this.currentRendersByGenome.clear();
+    
+    // Clear caches
+    this.completedRenders.clear();
+    this.audioBufferCache.clear();
     
     // Clear timers
     this.debounceTimers.forEach(timer => clearTimeout(timer));
@@ -627,6 +680,25 @@ class SoundRenderer {
     // Close AudioContext
     if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close().catch(err => console.warn('Error closing AudioContext:', err));
+    }
+  }
+  
+  /**
+   * Manage cache size to prevent memory issues
+   */
+  manageCacheSize() {
+    if (this.audioBufferCache.size > this.maxCacheSize) {
+      // Remove oldest entries (first added) to free up memory
+      const entriesToRemove = this.audioBufferCache.size - this.maxCacheSize;
+      const keys = Array.from(this.audioBufferCache.keys());
+      
+      for (let i = 0; i < entriesToRemove; i++) {
+        const keyToRemove = keys[i];
+        this.audioBufferCache.delete(keyToRemove);
+        this.completedRenders.delete(keyToRemove);
+      }
+      
+      console.log(`SoundRenderer: Cache size reduced from ${this.audioBufferCache.size + entriesToRemove} to ${this.audioBufferCache.size}`);
     }
   }
 }
