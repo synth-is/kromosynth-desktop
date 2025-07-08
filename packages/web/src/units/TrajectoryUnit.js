@@ -150,7 +150,7 @@ export class TrajectoryUnit extends BaseUnit {
             this.updatePlayingVoice(genomeId, renderParams);
             this._pendingRenderParams.delete(genomeId);
           }
-        }, 100)); // Short delay to debounce multiple rapid changes
+        }, 16)); // ~60fps for smooth real-time updates
       }
     }
     
