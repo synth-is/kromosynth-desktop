@@ -7,8 +7,11 @@ note("c2 <eb2 <g2 g1>>".fast(2))
 // Default host URL for lineage sounds (legacy static file server)
 export const DEFAULT_LINEAGE_SOUNDS_BUCKET_HOST = "https://ns9648k.web.sigma2.no";
 
-// Default REST service configuration
-export const DEFAULT_REST_SERVICE_HOST = "http://localhost:3004";
+// Default REST service configuration - dynamically determined based on hostname
+export const DEFAULT_REST_SERVICE_HOST = window.location.hostname === 'localhost' || 
+                                        window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:3004'
+  : 'https://api.synth.is';  // Replace with your production API URL
 
 // Get the current host URL (custom from localStorage or default)
 export const getLineageSoundsBucketHost = () => {
