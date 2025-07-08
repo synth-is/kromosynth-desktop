@@ -863,8 +863,12 @@ const TrajectoryEventParams = ({
               id={`explore-params-${unit.id}`}
               className="ml-4 mt-1 space-y-2"
               style={{ display: 'none' }}
+              onClick={e => e.stopPropagation()}
             >
-              <div className="bg-gray-700/50 rounded-sm p-2 space-y-2 relative">
+              <div 
+                className="bg-gray-700/50 rounded-sm p-2 space-y-2 relative"
+                onClick={e => e.stopPropagation()}
+              >
                 <ModifyParameters 
                   values={trajectoryUnit.lastHoveredSound}
                   onChange={(param, value) => {
@@ -954,6 +958,7 @@ const TrajectoryEventParams = ({
                     <div 
                       key={index}
                       className="bg-gray-700/50 rounded-sm p-2 space-y-2 relative"
+                      onClick={e => e.stopPropagation()}
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-300">
@@ -961,21 +966,29 @@ const TrajectoryEventParams = ({
                         </span>
                       </div>
                       
-                      <details className="text-xs">
-                        <summary className="cursor-pointer text-gray-300">
+                      <details 
+                        className="text-xs"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <summary 
+                          className="cursor-pointer text-gray-300"
+                          onClick={e => e.stopPropagation()}
+                        >
                           Parameters
                         </summary>
-                        <TrajectoryEventParams
-                          event={event}
-                          onUpdate={updates => {
-                            trajectoryUnit.updateTrajectoryEvent(trajectoryId, index, updates);
-                            forceTrajectoryUpdate(unit.id);
-                          }}
-                          isRendering={isVoiceRendering(unit.id, event.cellData.genomeId)}
-                          trajectoryUnit={trajectoryUnit}
-                          trajectoryId={trajectoryId}
-                          eventIndex={index}
-                        />
+                        <div onClick={e => e.stopPropagation()}>
+                          <TrajectoryEventParams
+                            event={event}
+                            onUpdate={updates => {
+                              trajectoryUnit.updateTrajectoryEvent(trajectoryId, index, updates);
+                              forceTrajectoryUpdate(unit.id);
+                            }}
+                            isRendering={isVoiceRendering(unit.id, event.cellData.genomeId)}
+                            trajectoryUnit={trajectoryUnit}
+                            trajectoryId={trajectoryId}
+                            eventIndex={index}
+                          />
+                        </div>
                       </details>
                     </div>
                   ))}
@@ -1039,6 +1052,7 @@ const renderLoopingControls = (unit) => {
         id={`looping-voices-${unit.id}`}
         className="space-y-2"
         style={{ display: 'none' }}
+        onClick={e => e.stopPropagation()}
       >
         {/* Sync Controls */}
         <div className="flex items-center gap-2 py-1">
@@ -1101,8 +1115,12 @@ const renderLoopingControls = (unit) => {
                 id={`looping-voice-${voice.id}`}
                 className="ml-4 mt-1 space-y-2"
                 style={{ display: 'none' }}
+                onClick={e => e.stopPropagation()}
               >
-                <div className="bg-gray-700/50 rounded-sm p-2 space-y-2 relative">
+                <div 
+                  className="bg-gray-700/50 rounded-sm p-2 space-y-2 relative"
+                  onClick={e => e.stopPropagation()}
+                >
                   <ModifyParameters 
                     values={voice}
                     onChange={(param, value) => {
@@ -1200,6 +1218,7 @@ const renderLoopingControls = (unit) => {
               <div 
                 key={`${group.offset}-voice-${itemIndex}`}
                 className="bg-gray-700/50 rounded-sm p-2 space-y-2"
+                onClick={e => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-300">

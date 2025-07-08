@@ -697,6 +697,9 @@ export class TrajectoryUnit extends BaseUnit {
       // FIXED: Store the correct VFS key for this sound
       vfsKey: eventVfsKey
     });
+    
+    // FIXED: Notify UI about state changes to ensure proper rendering
+    this.notifyStateChange();
   }
 
   stopTrajectoryRecording() {
@@ -1092,6 +1095,9 @@ export class TrajectoryUnit extends BaseUnit {
         this.stopOffset = updates.stopOffset;
       }
     }
+    
+    // FIXED: Notify UI about state changes to ensure proper rendering
+    this.notifyStateChange();
   }
 
   // Add a helper method to perform the actual render
@@ -1297,6 +1303,9 @@ export class TrajectoryUnit extends BaseUnit {
               // Then restart playback with updated parameters
               this.playTrajectory(trajectoryId);
             }
+            
+            // FIXED: Notify UI about state changes to ensure proper rendering
+            this.notifyStateChange();
           }
         }
       );
@@ -1333,6 +1342,9 @@ export class TrajectoryUnit extends BaseUnit {
       console.log('Restarting playback with updated parameters');
       this.playTrajectory(trajectoryId);
     }
+    
+    // FIXED: Notify UI about state changes to ensure proper rendering
+    this.notifyStateChange();
   }
 
   /**
