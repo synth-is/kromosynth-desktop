@@ -1,8 +1,12 @@
 import SoundRenderer from './SoundRenderer';
-import { getRestServiceHost, REST_ENDPOINTS, getLineageSoundsBucketHost } from '../constants';
+import { getRestServiceHost, REST_ENDPOINTS, getLineageSoundsBucketHost, FEATURE_FLAGS } from '../constants';
 
 /**
  * AudioFetcher - A utility class to get audio buffers either from WAV files or from the SoundRenderer
+ * 
+ * Feature flag FEATURE_FLAGS.SKIP_WAV_FETCHING can be used to skip WAV file fetching and go 
+ * directly to rendering from genome data. This avoids unnecessary network roundtrips when 
+ * WAV files are mostly unavailable.
  */
 class AudioFetcher {
   /**
@@ -71,7 +75,8 @@ class AudioFetcher {
   
   /**
    * Get AudioData for the specified sound
-   * First attempts to fetch from WAV, then falls back to SoundRenderer if needed
+   * When FEATURE_FLAGS.SKIP_WAV_FETCHING is enabled, goes directly to rendering from genome.
+   * Otherwise, first attempts to fetch from WAV, then falls back to SoundRenderer if needed.
    * @param {Object} soundData - Data about the sound (genomeId, experiment, evoRunId)
    * @param {Object} renderParams - Parameters for rendering (duration, pitch, velocity)
    * @param {AudioContext} audioContext - AudioContext to use for decoding
@@ -80,9 +85,6 @@ class AudioFetcher {
    * @returns {Promise<AudioBuffer>} - Promise that resolves with the AudioBuffer
    */
   static async getAudioData(soundData, renderParams, audioContext, onComplete, onProgress) {
-    const wavUrl = this.getWavUrl(soundData, renderParams);
-    
-    // Create a custom cache key for this specific parameter combination
     const cacheKey = `${soundData.genomeId}-${renderParams.duration}_${renderParams.pitch}_${renderParams.velocity}`;
     
     // First check if we have this in the local cache
@@ -108,9 +110,68 @@ class AudioFetcher {
       console.log(`AudioFetcher: Cached buffer for ${cacheKey} was invalid, re-rendering`);
       delete this.audioBufferCache[cacheKey];
     }
+
+    // Check feature flag to skip WAV fetching
+    if (FEATURE_FLAGS.SKIP_WAV_FETCHING) {
+      console.log('AudioFetcher: Skipping WAV fetching due to feature flag, going directly to renderer');
+      
+      // Go directly to renderer
+      try {
+        // Return a promise that resolves when the render completes
+        return new Promise((resolve, reject) => {
+          SoundRenderer.renderSound(
+            soundData,
+            renderParams,
+            (result) => {
+              if (result.success && result.audioBuffer) {
+                // Cache the buffer for future use
+                if (!this.audioBufferCache) this.audioBufferCache = {};
+                this.audioBufferCache[cacheKey] = result.audioBuffer;
+                
+                if (onComplete) {
+                  onComplete({ 
+                    success: true, 
+                    audioBuffer: result.audioBuffer,
+                    source: 'renderer',
+                    cacheKey
+                  });
+                }
+                resolve(result.audioBuffer);
+              } else {
+                const error = new Error('Render failed: ' + (result.error || 'Unknown error'));
+                if (onComplete) {
+                  onComplete({ 
+                    success: false, 
+                    error: error.message,
+                    source: 'renderer'
+                  });
+                }
+                reject(error);
+              }
+            },
+            onProgress
+          );
+        });
+      } catch (renderError) {
+        console.error('AudioFetcher: Direct render failed:', renderError);
+        if (onComplete) {
+          onComplete({ 
+            success: false, 
+            error: renderError.message,
+            source: 'renderer'
+          });
+        }
+        throw renderError;
+      }
+    }
+    
+    // Legacy path: try WAV fetching first (when feature flag is disabled)
+    const wavUrl = this.getWavUrl(soundData, renderParams);
+    // Legacy path: try WAV fetching first (when feature flag is disabled)
     
     // First try to fetch from WAV URL
     try {
+      const wavUrl = this.getWavUrl(soundData, renderParams);
       const response = await fetch(wavUrl);
       if (response.ok) {
         const arrayBuffer = await response.arrayBuffer();

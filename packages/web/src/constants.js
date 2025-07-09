@@ -4,6 +4,13 @@ note("c2 <eb2 <g2 g1>>".fast(2))
 ._scope()
 `.trim();
 
+// Feature flags
+export const FEATURE_FLAGS = {
+  // Skip WAV file fetching and go directly to rendering from genome
+  // Set to true to avoid unnecessary network roundtrips to evorenders
+  SKIP_WAV_FETCHING: true
+};
+
 // Default host URL for lineage sounds (legacy static file server)
 export const DEFAULT_LINEAGE_SOUNDS_BUCKET_HOST = "https://ns9648k.web.sigma2.no";
 
