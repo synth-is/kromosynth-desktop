@@ -38,6 +38,7 @@ const TopBar = ({
   const [showRunSelector, setShowRunSelector] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({});
   const dropdownRef = useRef(null);
+  const dropdownContentRef = useRef(null);
 
   // Initialize expanded groups to show the latest group by default
   useEffect(() => {
@@ -65,6 +66,39 @@ const TopBar = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showRunSelector]);
+
+  // Scroll to selected item when dropdown opens
+  useEffect(() => {
+    if (showRunSelector && dropdownContentRef.current && selectedRun && evorunsSummary?.groups) {
+      // First, ensure the group containing the selected run is expanded
+      let foundGroupKey = null;
+      for (const [dateKey, dateGroup] of Object.entries(evorunsSummary.groups)) {
+        if (dateGroup[selectedRun]) {
+          foundGroupKey = dateKey;
+          break;
+        }
+      }
+      
+      if (foundGroupKey && !expandedGroups[foundGroupKey]) {
+        // Expand the group containing the selected run
+        setExpandedGroups(prev => ({
+          ...prev,
+          [foundGroupKey]: true
+        }));
+      }
+      
+      // Small delay to ensure the dropdown and expansion are rendered
+      setTimeout(() => {
+        const selectedButton = dropdownContentRef.current?.querySelector('.bg-blue-600');
+        if (selectedButton) {
+          selectedButton.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'nearest' 
+          });
+        }
+      }, foundGroupKey && !expandedGroups[foundGroupKey] ? 100 : 50); // Longer delay if we just expanded
+    }
+  }, [showRunSelector, selectedRun, evorunsSummary]); // Removed expandedGroups from dependencies
 
   const toggleGroup = (groupKey) => {
     setExpandedGroups(prev => ({
@@ -161,7 +195,10 @@ const TopBar = ({
           </button>
           
           {showRunSelector && evorunsSummary?.groups && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded max-h-96 overflow-y-auto z-[9999] shadow-xl">
+            <div 
+              ref={dropdownContentRef}
+              className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded max-h-96 overflow-y-auto z-[9999] shadow-xl"
+            >
               {Object.entries(evorunsSummary.groups)
                 .sort(([a], [b]) => b.localeCompare(a)) // Sort dates descending (newest first)
                 .map(([dateKey, dateGroup]) => (
