@@ -15,10 +15,12 @@ export const FEATURE_FLAGS = {
 export const DEFAULT_LINEAGE_SOUNDS_BUCKET_HOST = "https://ns9648k.web.sigma2.no";
 
 // Default REST service configuration - dynamically determined based on hostname
-export const DEFAULT_REST_SERVICE_HOST = window.location.hostname === 'localhost' || 
-                                        window.location.hostname === '127.0.0.1'
-  ? 'http://localhost:3004'
-  : 'https://api.synth.is';  // Replace with your production API URL
+export const DEFAULT_REST_SERVICE_HOST = 
+  // window.location.hostname === 'localhost' || 
+  // window.location.hostname === '127.0.0.1'
+  // ? 'http://localhost:3004'
+  // : 
+  'https://api.synth.is';  // Replace with your production API URL
 
 // Get the current host URL (custom from localStorage or default)
 export const getLineageSoundsBucketHost = () => {

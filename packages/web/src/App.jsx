@@ -32,7 +32,8 @@ const TopBar = ({
   setShowSettings,
   runs,
   evorunsSummary,
-  steps 
+  steps,
+  lineageTreesIndex 
 }) => {
   const [showRunSelector, setShowRunSelector] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({});
@@ -73,6 +74,11 @@ const TopBar = ({
   };
 
   const selectRun = (folderName) => {
+    console.log('selectRun called with folderName:', folderName);
+    console.log('Current selectedRun:', selectedRun, 'selectedIndex:', selectedIndex);
+    console.log('evorunsSummary.groups available:', !!evorunsSummary?.groups);
+    console.log('lineageTreesIndex available:', !!lineageTreesIndex);
+    
     // Find the experiment class and step index for this specific evorun
     let experimentClass = null;
     let stepIndex = 0;
@@ -85,6 +91,9 @@ const TopBar = ({
           if (runIndex !== -1) {
             experimentClass = experimentKey;
             stepIndex = runIndex;
+            console.log('Found experiment class:', experimentClass, 'at index:', stepIndex);
+            console.log('lineageTreesIndex has this experimentClass:', !!lineageTreesIndex?.[experimentClass]);
+            console.log('lineageTreesIndex[experimentClass] length:', lineageTreesIndex?.[experimentClass]?.length);
             break;
           }
         }
@@ -94,11 +103,20 @@ const TopBar = ({
     
     if (experimentClass) {
       // Update both the run (to experiment class) and step (to index within that class)
+      console.log('Calling handleRunChange with:', experimentClass);
+      console.log('Calling handleIndexChange with:', stepIndex);
       handleRunChange(experimentClass);
       handleIndexChange(stepIndex);
     } else {
-      // Fallback to old behavior if we can't find the experiment class
-      handleRunChange(folderName);
+      // Fallback: warn about the issue but don't break the app
+      console.warn('Could not find experiment class for folderName:', folderName);
+      console.warn('Available experiment classes in lineageTreesIndex:', Object.keys(lineageTreesIndex || {}));
+      console.warn('Available experiment classes in evorunsSummary.groups:', 
+        evorunsSummary?.groups ? 
+          Object.values(evorunsSummary.groups).flatMap(group => Object.keys(group)) : 
+          'none'
+      );
+      // Don't change the run selection if we can't find a valid experiment class
     }
     
     setShowRunSelector(false);
@@ -174,7 +192,8 @@ const TopBar = ({
                                     key={evorun.folderName}
                                     onClick={() => selectRun(evorun.folderName)}
                                     className={`w-full p-2 text-left hover:bg-gray-700 text-sm pl-6 ${
-                                      selectedRun === evorun.folderName 
+                                      selectedRun === experimentKey && 
+                                      dateGroup[experimentKey][selectedIndex]?.folderName === evorun.folderName
                                         ? 'bg-blue-600 text-white' 
                                         : 'text-gray-300'
                                     }`}
@@ -256,7 +275,7 @@ function MainContent({
     <div className="fixed inset-0 flex flex-col bg-gray-950">
       {/* TopBar always at the top */}
       <div>
-        <TopBar {...props} runs={Object.keys(lineageTreesIndex || {})} evorunsSummary={evorunsSummary} steps={lineageTreesIndex ? lineageTreesIndex[props.selectedRun]?.length || 0 : 0} />
+        <TopBar {...props} runs={Object.keys(lineageTreesIndex || {})} evorunsSummary={evorunsSummary} steps={lineageTreesIndex ? lineageTreesIndex[props.selectedRun]?.length || 0 : 0} lineageTreesIndex={lineageTreesIndex} />
       </div>
       <div className="flex-1 relative">
         <div className="absolute inset-0">
@@ -365,9 +384,10 @@ function MainApp() {
   console.log('Loading and error states initialized');
 
   // Group all useState calls together
-  const [selectedRun, setSelectedRun] = useState(() => 
-    searchParams.get('run') || null
-  );
+  const [selectedRun, setSelectedRun] = useState(() => {
+    const runParam = searchParams.get('run');
+    return runParam && runParam !== 'null' ? runParam : null;
+  });
   const [selectedIndex, setSelectedIndex] = useState(() => 
     parseInt(searchParams.get('step')) || 0
   );
@@ -405,7 +425,6 @@ function MainApp() {
   }, [selectedRun, lineageTreesIndex, searchParams, setSearchParams]);
 
   // Group all useRef calls together
-  const fetchedTreesRef = useRef(new Set());
   const fetchedIndexRef = useRef(false);
   console.log('useRef hooks successful');
 
@@ -457,7 +476,7 @@ function MainApp() {
                 firstExperimentKey = experimentKey;
               }
             }
-            if (firstExperimentKey) break;
+            // Don't break here - we want to process ALL date groups, not just the first one
           }
         } else {
           // Handle the old array format as fallback
@@ -467,6 +486,10 @@ function MainApp() {
             if (!firstExperimentKey) firstExperimentKey = runName;
           });
         }
+        console.log('Built lineageTreesIndex with experiment classes:', Object.keys(index));
+        console.log('Total entries per experiment class:', Object.fromEntries(
+          Object.entries(index).map(([key, value]) => [key, value.length])
+        ));
         setLineageTreesIndex(index);
         setEvorunsSummary(summary);
         fetchedIndexRef.current = true;
@@ -500,11 +523,20 @@ function MainApp() {
       });
   }, []);
 
+  // Combined tree data fetching effect - handles both gzipped and regular tree files
   useEffect(() => {
-    if (!lineageTreesIndex) return;
+    if (!lineageTreesIndex || !selectedRun || selectedIndex === undefined) return;
+    
     const treePath = lineageTreesIndex[selectedRun]?.[selectedIndex];
-    if (!treePath) return;
-    if (fetchedTreesRef.current.has(treePath)) return;
+    if (!treePath) {
+      console.warn('No tree path found for', { selectedRun, selectedIndex, lineageTreesIndex });
+      return;
+    }
+    
+    console.log('Fetching tree data for:', { selectedRun, selectedIndex, treePath });
+    
+    // Clear current data before fetching new data
+    setTreeData(null);
     
     const restServiceHost = getRestServiceHost();
     // Extract folderName and ulid from treePath
@@ -512,12 +544,13 @@ function MainApp() {
     const folderName = pathParts[0];
     const ulid = pathParts[1];
     
-    // Construct the correct file path for the tree JSON (gzipped version)
-    const treeFilePath = `analysisResults/trees/tree_${folderName}_all.json.gz`;
+    // Try gzipped version first
+    const gzippedTreeFilePath = `analysisResults/trees/tree_${folderName}_all.json.gz`;
+    console.log('Trying gzipped file:', gzippedTreeFilePath);
     
-    fetch(`${restServiceHost}${REST_ENDPOINTS.FILES(folderName, treeFilePath)}`)
+    fetch(`${restServiceHost}${REST_ENDPOINTS.FILES(folderName, gzippedTreeFilePath)}`)
       .then(response => {
-        if (!response.ok) throw new Error('REST service unreachable');
+        if (!response.ok) throw new Error('Gzipped file not found');
         return response.arrayBuffer();
       })
       .then(buffer => {
@@ -530,77 +563,58 @@ function MainApp() {
         return JSON.parse(jsonText);
       })
       .then(treeJson => {
+        console.log('Tree data loaded from gzipped REST service');
         setTreeData(treeJson);
-        fetchedTreesRef.current.add(treePath);
-        // Clear any existing error message on successful load
         setSoundSourceError(null);
       })
-      .catch(error => {
-        // Fallback to static file serving if REST service is unavailable
-        console.warn('REST service unavailable for tree data, falling back to static files:', error);
-        fetch(`${LINEAGE_SOUNDS_BUCKET_HOST}/lineage-trees/tree_${treePath}_all.json`)
+      .catch(gzipError => {
+        console.log('Gzipped file failed, trying regular JSON:', gzipError.message);
+        // Try regular JSON file if gzipped version fails
+        const treeFileName = pathParts[pathParts.length - 1];
+        const treeFilePath = `analysisResults/${treeFileName}`;
+        console.log('Trying regular file:', treeFilePath);
+        
+        fetch(`${restServiceHost}${REST_ENDPOINTS.FILES(folderName, treeFilePath)}`)
           .then(response => {
-            if (!response.ok) throw new Error('Sound source unreachable');
+            if (!response.ok) throw new Error('REST service unreachable');
             return response.json();
           })
           .then(treeJson => {
+            console.log('Tree data loaded from regular REST service');
             setTreeData(treeJson);
-            fetchedTreesRef.current.add(treePath);
-            // Clear any existing error message on successful load
             setSoundSourceError(null);
           })
-          .catch(fallbackError => {
-            setSoundSourceError('Neither REST service nor static file source can be reached for tree data. Please check your settings or choose another source.');
-            console.error('Error loading tree from both sources:', { restError: error, staticError: fallbackError });
+          .catch(restError => {
+            console.log('REST service failed, trying fallback:', restError.message);
+            // Fallback to static file serving if REST service is unavailable
+            console.warn('REST service unavailable for tree data, falling back to static files:', restError);
+            fetch(`${LINEAGE_SOUNDS_BUCKET_HOST}/lineage-trees/tree_${treePath}_all.json`)
+              .then(response => {
+                if (!response.ok) throw new Error('Sound source unreachable');
+                return response.json();
+              })
+              .then(treeJson => {
+                console.log('Tree data loaded from fallback URL');
+                setTreeData(treeJson);
+                setSoundSourceError(null);
+              })
+              .catch(fallbackError => {
+                setSoundSourceError('Neither REST service nor static file source can be reached for tree data. Please check your settings or choose another source.');
+                console.error('Error loading tree from all sources:', { gzipError, restError, fallbackError });
+              });
           });
       });
   }, [lineageTreesIndex, selectedRun, selectedIndex]);
 
+  // Update URL parameters when state changes
   useEffect(() => {
+    if (!selectedRun) return; // Don't update URL if selectedRun is null
     const newParams = new URLSearchParams(searchParams);
     newParams.set('run', selectedRun);
     newParams.set('step', selectedIndex.toString());
     newParams.set('view', currentView);
     setSearchParams(newParams, { replace: true });
-  }, [selectedRun, selectedIndex, currentView, setSearchParams]);
-
-  // Simplify the data fetching effect
-  useEffect(() => {
-    if (!lineageTreesIndex || !selectedRun || selectedIndex === undefined) return;
-    const treePath = lineageTreesIndex[selectedRun][selectedIndex];
-    
-    setTreeData(null); // Clear current data before fetching
-    
-    const restServiceHost = getRestServiceHost();
-    // Extract folderName and construct file path
-    const pathParts = treePath.split('/');
-    const folderName = pathParts[0];
-    const treeFileName = pathParts[pathParts.length - 1];
-    const treeFilePath = `analysisResults/${treeFileName}`;
-    
-    fetch(`${restServiceHost}${REST_ENDPOINTS.FILES(folderName, treeFilePath)}`)
-      .then(response => {
-        if (!response.ok) throw new Error('REST service unreachable');
-        return response.json();
-      })
-      .then(treeJson => {
-        console.log('Tree data loaded from REST service');
-        setTreeData(treeJson);
-      })
-      .catch(error => {
-        // Fallback to static file serving if REST service is unavailable
-        console.warn('REST service unavailable for tree data, falling back to static files:', error);
-        fetch(`${LINEAGE_SOUNDS_BUCKET_HOST}/lineage-trees/tree_${treePath}_all.json`)
-          .then(response => response.json())
-          .then(treeJson => {
-            console.log('Tree data loaded from fallback URL');
-            setTreeData(treeJson);
-          })
-          .catch(fallbackError => {
-            console.error('Error loading tree from both sources:', { restError: error, staticError: fallbackError });
-          });
-      });
-  }, [lineageTreesIndex, selectedRun, selectedIndex]);
+  }, [selectedRun, selectedIndex, currentView, setSearchParams, searchParams]);
 
   // Add effect to handle audio interaction state when view changes
   useEffect(() => {
@@ -609,18 +623,33 @@ function MainApp() {
     }
   }, [currentView]);
 
+  // Validate selectedIndex when lineageTreesIndex or selectedRun changes
+  useEffect(() => {
+    if (lineageTreesIndex && selectedRun && selectedIndex !== undefined) {
+      const maxIndex = lineageTreesIndex[selectedRun]?.length || 0;
+      if (selectedIndex >= maxIndex && maxIndex > 0) {
+        // selectedIndex is out of bounds, reset to last valid index
+        const newIndex = Math.max(0, maxIndex - 1);
+        setSelectedIndex(newIndex);
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set('step', newIndex.toString());
+        setSearchParams(newParams, { replace: true });
+      }
+    }
+  }, [lineageTreesIndex, selectedRun, selectedIndex, searchParams, setSearchParams]);
+
   // Add handler functions
   const handleRunChange = (run) => {
-    fetchedTreesRef.current.clear(); // Clear cache when manually changing run
-    setTreeData(null);
     setSelectedRun(run);
+    // Reset selectedIndex to 0 when changing runs to prevent out-of-bounds access
+    setSelectedIndex(0);
     const newParams = new URLSearchParams(searchParams);
     newParams.set('run', run);
+    newParams.set('step', '0'); // Reset step to 0
     setSearchParams(newParams, { replace: true });
   };
 
   const handleIndexChange = (index) => {
-    setTreeData(null);
     setSelectedIndex(index);
     const newParams = new URLSearchParams(searchParams);
     newParams.set('step', index.toString());
