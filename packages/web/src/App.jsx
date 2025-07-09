@@ -389,6 +389,21 @@ function MainApp() {
   const [playingUnits, setPlayingUnits] = useState(new Set());
   console.log('All useState hooks successful');
 
+  // Set selectedRun to first available experiment group after lineageTreesIndex is loaded, if not set by URL
+  useEffect(() => {
+    // Only run if selectedRun is null/empty or 'null' (string), and we have a valid lineageTreesIndex
+    if ((!selectedRun || selectedRun === 'null') && lineageTreesIndex && Object.keys(lineageTreesIndex).length > 0) {
+      // Find the first experiment group key (sorted for determinism)
+      const firstRun = Object.keys(lineageTreesIndex).sort()[0];
+      if (firstRun) {
+        setSelectedRun(firstRun);
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set('run', firstRun);
+        setSearchParams(newParams, { replace: true });
+      }
+    }
+  }, [selectedRun, lineageTreesIndex, searchParams, setSearchParams]);
+
   // Group all useRef calls together
   const fetchedTreesRef = useRef(new Set());
   const fetchedIndexRef = useRef(false);
@@ -424,36 +439,45 @@ function MainApp() {
       .then(summary => {
         // Transform the REST response to match the expected lineageTreesIndex format
         const index = {};
-        
-        // Handle the new grouped structure
+        let firstExperimentKey = null;
         if (summary.groups) {
-          // Group runs by experiment type for the lineageTreesIndex format
-          Object.values(summary.groups).forEach(dateGroup => {
-            Object.entries(dateGroup).forEach(([experimentKey, experimentRuns]) => {
-              // Use the experiment key as the run name and map each evorun as a step
+          // Sort date groups (descending: newest first)
+          const sortedDateKeys = Object.keys(summary.groups).sort((a, b) => b.localeCompare(a));
+          for (const dateKey of sortedDateKeys) {
+            const dateGroup = summary.groups[dateKey];
+            const experimentKeys = Object.keys(dateGroup).sort();
+            for (const experimentKey of experimentKeys) {
               if (!index[experimentKey]) {
                 index[experimentKey] = [];
               }
-              // Add each evorun as a step, using folderName/ulid format for tree path
-              experimentRuns.forEach(evorun => {
+              dateGroup[experimentKey].forEach(evorun => {
                 index[experimentKey].push(`${evorun.folderName}/${evorun.ulid}`);
               });
-            });
-          });
+              if (!firstExperimentKey) {
+                firstExperimentKey = experimentKey;
+              }
+            }
+            if (firstExperimentKey) break;
+          }
         } else {
           // Handle the old array format as fallback
           summary.forEach(evorun => {
             const runName = evorun.folderName;
             index[runName] = evorun.steps ? evorun.steps.map(step => `${runName}/${step.stepName}`) : [];
+            if (!firstExperimentKey) firstExperimentKey = runName;
           });
         }
-        
         setLineageTreesIndex(index);
-        // Store the raw summary for use in the grouped dropdown
         setEvorunsSummary(summary);
         fetchedIndexRef.current = true;
-        // Clear any existing error message on successful load
         setSoundSourceError(null);
+        // Set selectedRun to first experiment key if not set
+        if ((!selectedRun || selectedRun === 'null') && firstExperimentKey) {
+          setSelectedRun(firstExperimentKey);
+          const newParams = new URLSearchParams(searchParams);
+          newParams.set('run', firstExperimentKey);
+          setSearchParams(newParams, { replace: true });
+        }
       })
       .catch(error => {
         // Fallback to static file serving if REST service is unavailable
