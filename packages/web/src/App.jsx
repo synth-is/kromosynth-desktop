@@ -440,8 +440,8 @@ function MainApp() {
   const [lastHoverData, setLastHoverData] = useState(null);  // Add this state
   const [units, setUnits] = useState(() => [{
     id: 1,
-    type: UNIT_TYPES.TRAJECTORY,
-    ...DEFAULT_UNIT_CONFIGS[UNIT_TYPES.TRAJECTORY]
+    type: UNIT_TYPES.LOOPING,
+    ...DEFAULT_UNIT_CONFIGS[UNIT_TYPES.LOOPING]
   }]);
   const [playingUnits, setPlayingUnits] = useState(new Set());
   console.log('All useState hooks successful');
