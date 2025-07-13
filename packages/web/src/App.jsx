@@ -446,17 +446,35 @@ function MainApp() {
   const [playingUnits, setPlayingUnits] = useState(new Set());
   console.log('All useState hooks successful');
 
-  // Set selectedRun to first available experiment group after lineageTreesIndex is loaded, if not set by URL
+  // Set selectedRun to preferred default or first available experiment group after lineageTreesIndex is loaded, if not set by URL
   useEffect(() => {
     // Only run if selectedRun is null/empty or 'null' (string), and we have a valid lineageTreesIndex
     if ((!selectedRun || selectedRun === 'null') && lineageTreesIndex && Object.keys(lineageTreesIndex).length > 0) {
-      // Find the first experiment group key (sorted for determinism)
-      const firstRun = Object.keys(lineageTreesIndex).sort()[0];
-      if (firstRun) {
-        setSelectedRun(firstRun);
+      // Preferred defaults
+      const preferredRun = 'one_comb-dur_0.5';
+      const preferredStep = 8;
+      const preferredView = 'tree';
+      
+      // Check if preferred run is available and has enough steps
+      if (lineageTreesIndex[preferredRun] && lineageTreesIndex[preferredRun].length > preferredStep) {
+        // Use preferred defaults
+        setSelectedRun(preferredRun);
+        setSelectedIndex(preferredStep);
+        setCurrentView(preferredView);
         const newParams = new URLSearchParams(searchParams);
-        newParams.set('run', firstRun);
+        newParams.set('run', preferredRun);
+        newParams.set('step', preferredStep.toString());
+        newParams.set('view', preferredView);
         setSearchParams(newParams, { replace: true });
+      } else {
+        // Fallback to first available experiment group
+        const firstRun = Object.keys(lineageTreesIndex).sort()[0];
+        if (firstRun) {
+          setSelectedRun(firstRun);
+          const newParams = new URLSearchParams(searchParams);
+          newParams.set('run', firstRun);
+          setSearchParams(newParams, { replace: true });
+        }
       }
     }
   }, [selectedRun, lineageTreesIndex, searchParams, setSearchParams]);
@@ -531,12 +549,30 @@ function MainApp() {
         setEvorunsSummary(summary);
         fetchedIndexRef.current = true;
         setSoundSourceError(null);
-        // Set selectedRun to first experiment key if not set
-        if ((!selectedRun || selectedRun === 'null') && firstExperimentKey) {
-          setSelectedRun(firstExperimentKey);
-          const newParams = new URLSearchParams(searchParams);
-          newParams.set('run', firstExperimentKey);
-          setSearchParams(newParams, { replace: true });
+        // Set selectedRun to preferred default or first experiment key if not set
+        if ((!selectedRun || selectedRun === 'null')) {
+          const preferredRun = 'one_comb-dur_0.5';
+          const preferredStep = 8;
+          const preferredView = 'tree';
+          
+          // Check if preferred run is available and has enough steps
+          if (index[preferredRun] && index[preferredRun].length > preferredStep) {
+            // Use preferred defaults
+            setSelectedRun(preferredRun);
+            setSelectedIndex(preferredStep);
+            setCurrentView(preferredView);
+            const newParams = new URLSearchParams(searchParams);
+            newParams.set('run', preferredRun);
+            newParams.set('step', preferredStep.toString());
+            newParams.set('view', preferredView);
+            setSearchParams(newParams, { replace: true });
+          } else if (firstExperimentKey) {
+            // Fallback to first available experiment
+            setSelectedRun(firstExperimentKey);
+            const newParams = new URLSearchParams(searchParams);
+            newParams.set('run', firstExperimentKey);
+            setSearchParams(newParams, { replace: true });
+          }
         }
       })
       .catch(error => {
