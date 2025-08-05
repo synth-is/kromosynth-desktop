@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Code, Play, Square, RefreshCw, Bug, ChevronUp, ChevronDown } from 'lucide-react';
 import StrudelEditor from './StrudelEditor';
 import ChuckEditor from './ChuckEditor';
+import LiveCodingStrudelEditor from './LiveCodingStrudelEditor';
 import { DEFAULT_STRUDEL_CODE, UNIT_TYPES } from '../constants';
 import '@strudel/repl';
 import { useStrudelPattern } from './useStrudelPattern';
@@ -281,7 +282,7 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
   });
 
   const [showDebugger, setShowDebugger] = useState(false);
-  const [activeTab, setActiveTab] = useState('Unit');
+  const [activeTab, setActiveTab] = useState(unit.type === UNIT_TYPES.LIVE_CODING ? 'Live Code' : 'Unit');
   const [liveCodeEngine, setLiveCodeEngine] = useState(unit.liveCodeEngine || 'Strudel');
   const editorRef = useRef(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -601,6 +602,71 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
             </>
           )}
 
+          {activeTab === 'Unit' && unit.type === UNIT_TYPES.LIVE_CODING && (
+            <>
+              <CollapsibleSection title="Live Coding">
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={unit.sync || false}
+                      onChange={(e) => onUpdateUnit(unit.id, { ...unit, sync: e.target.checked })}
+                      className="rounded bg-gray-800 border-gray-700"
+                    />
+                    <span className="text-gray-300">Sync with other units</span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={unit.solo || false}
+                      onChange={(e) => onUpdateUnit(unit.id, { ...unit, solo: e.target.checked })}
+                      className="rounded bg-gray-800 border-gray-700"
+                    />
+                    <span className="text-gray-300">Solo mode</span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={unit.autoGenerateCode || false}
+                      onChange={(e) => onUpdateUnit(unit.id, { ...unit, autoGenerateCode: e.target.checked })}
+                      className="rounded bg-gray-800 border-gray-700"
+                    />
+                    <span className="text-gray-300">Auto-generate code when adding sounds</span>
+                  </label>
+                </div>
+              </CollapsibleSection>
+              
+              <CollapsibleSection title="Sample Bank">
+                <div className="space-y-2 text-sm">
+                  {actualInstance ? (
+                    <div>
+                      <div className="text-gray-300">
+                        Current samples: {actualInstance.getSampleBankInfo().sampleCount}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-2">
+                        Double-click sounds in the phylogenetic tree to add them to this unit's sample bank.
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (actualInstance) {
+                            actualInstance.clearSampleBank();
+                          }
+                        }}
+                        className="mt-2 px-3 py-1 text-xs bg-red-600/50 hover:bg-red-600 text-white rounded"
+                      >
+                        Clear Sample Bank
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-gray-500">Unit instance not available</div>
+                  )}
+                </div>
+              </CollapsibleSection>
+            </>
+          )}
+
           {activeTab === 'Sampler' && (
             <>
               {/* Remove Sample section */}
@@ -748,7 +814,25 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
               )}
 
               <div className="relative flex-1" style={{ minHeight: '300px' }}>
-                {liveCodeEngine === 'Strudel' ? (
+                {unit.type === UNIT_TYPES.LIVE_CODING ? (
+                  <LiveCodingStrudelEditor
+                    key={unit.id}
+                    unitId={unit.id}
+                    initialCode={unit.strudelCode || DEFAULT_STRUDEL_CODE}
+                    onCodeChange={handleCodeChange}
+                    onEditorReady={(editor) => {
+                      console.log(`LiveCodingUnit ${unit.id}: Editor ready`);
+                      if (actualInstance && actualInstance.setReplInstance) {
+                        actualInstance.setReplInstance(editor);
+                      }
+                      if (handleEditorReady) {
+                        handleEditorReady(editor);
+                      }
+                    }}
+                    sync={unit.sync}
+                    solo={unit.solo}
+                  />
+                ) : liveCodeEngine === 'Strudel' ? (
                   <StrudelEditor
                     key={unit.id}
                     unitId={unit.id}

@@ -16,10 +16,10 @@ export const DEFAULT_LINEAGE_SOUNDS_BUCKET_HOST = "https://ns9648k.web.sigma2.no
 
 // Default REST service configuration - dynamically determined based on hostname
 export const DEFAULT_REST_SERVICE_HOST = 
-  // window.location.hostname === 'localhost' || 
-  // window.location.hostname === '127.0.0.1'
-  // ? 'http://localhost:3004'
-  // : 
+  window.location.hostname === 'localhost' || 
+  window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:3004'
+  : 
   'https://api.synth.is';  // Replace with your production API URL
 
 // Get the current host URL (custom from localStorage or default)
@@ -51,7 +51,8 @@ export const REST_ENDPOINTS = {
 export const UNIT_TYPES = {
   TRAJECTORY: 'TRAJECTORY',
   SEQUENCING: 'SEQUENCING',
-  LOOPING: 'LOOPING'  // Add new unit type
+  LOOPING: 'LOOPING',
+  LIVE_CODING: 'LIVE_CODING'
 };
 
 export const DEFAULT_UNIT_CONFIGS = {
@@ -74,13 +75,16 @@ export const DEFAULT_UNIT_CONFIGS = {
     bpm: 120,
     startOffset: 0
   },
-  [UNIT_TYPES.LIVE_CODE]: {
+  [UNIT_TYPES.LIVE_CODING]: {
     strudelCode: DEFAULT_STRUDEL_CODE,
     liveCodeEngine: 'Strudel',
     volume: -10,
     active: true,
     muted: false,
-    soloed: false
+    soloed: false,
+    sync: true,
+    solo: false,
+    autoGenerateCode: true
   },
   [UNIT_TYPES.LOOPING]: {
     volume: -10,
