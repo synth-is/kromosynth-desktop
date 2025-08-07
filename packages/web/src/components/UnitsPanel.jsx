@@ -7,6 +7,7 @@ import { LoopingUnit } from '../units/LoopingUnit';
 import { LiveCodingUnit } from '../units/LiveCodingUnit';
 import { CellDataFormatter } from '../utils/CellDataFormatter';
 import { useUnits } from '../UnitsContext';
+import UnitStrudelRepl from './UnitStrudelRepl';
 
 // Enhanced Slider component to show default value markers
 const Slider = ({ 
@@ -1246,6 +1247,12 @@ const renderLiveCodingControls = (unit) => {
           <div>Last hover: {window._lastCellData ? window._lastCellData.genomeId?.slice(-6) : 'none'}</div>
           <div>Instance: {liveCodingUnit ? '✓' : '✗'}</div>
           <div>REPL: {liveCodingUnit?.replInstance ? '✓' : '✗'}</div>
+        </div>
+
+        {/* Dead simple REPL - no complex bridging */}
+        <div className="border-t border-gray-700 pt-2">
+          <div className="text-xs text-gray-400 mb-2 px-2">Live Code Editor</div>
+          <UnitStrudelRepl unitId={unit.id} />
         </div>
       </div>
     );

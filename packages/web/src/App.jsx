@@ -17,6 +17,7 @@ import UnitConfigPanel from './components/UnitConfigPanel';
 import ViewSwitcher from './components/ViewSwitcher';
 import HeatmapViewer from './components/HeatmapViewer';
 import StrudelReplTest from './components/StrudelReplTest';
+import DynamicStrudelTest from './components/DynamicStrudelTest';
 import { StrudelPatternProvider } from './components/strudelPatternContext';
 import { DEFAULT_STRUDEL_CODE, LINEAGE_SOUNDS_BUCKET_HOST, UNIT_TYPES, DEFAULT_UNIT_CONFIGS, getRestServiceHost, REST_ENDPOINTS } from './constants';
 import { UnitsProvider, useUnits } from './UnitsContext';
@@ -858,6 +859,7 @@ const router = createBrowserRouter(
   createRoutesFromElements(
     <Route>
       <Route path="/strudel-repl-test" element={<StrudelReplTest />} />
+      <Route path="/dynamic-strudel-test" element={<DynamicStrudelTest />} />
       <Route path="/" element={<MainApp />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Route>

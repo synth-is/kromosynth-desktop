@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, ChevronUp, ChevronDown } from 'lucide-react';
-import LiveCodingStrudelEditor from './LiveCodingStrudelEditor';
 import { UNIT_TYPES } from '../constants';
 import { useUnits } from '../UnitsContext'; // Add this import for useUnits
 
@@ -749,23 +748,12 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
                 </div>
               </div>
               
-              {/* Live Coding Editor for LiveCodingUnit only */}
-              <div className="relative flex-1" style={{ minHeight: '300px' }}>
-                  <LiveCodingStrudelEditor
-                    key={unit.id}
-                    unitId={unit.id}
-                    unitInstance={actualInstance} // Pass the unit instance (actualInstance IS the instance)
-                    initialCode={unit.strudelCode || '// Waiting for evolutionary sounds...\n// Double-click sounds in the tree to add them here'}
-                    onCodeChange={handleCodeChange}
-                    onEditorReady={(editor) => {
-                      console.log(`LiveCodingUnit ${unit.id}: Editor ready`);
-                      if (actualInstance && actualInstance.setReplInstance) {
-                        actualInstance.setReplInstance(editor, handleCodeChange);
-                      }
-                    }}
-                    sync={unit.sync}
-                    solo={unit.solo}
-                  />
+              {/* LiveCodingUnit configuration - REPL editor now in UnitsPanel for true isolation */}
+              <div className="space-y-4">
+                <div className="text-sm text-gray-400">
+                  Live coding editor is now displayed in the Units Panel for better isolation between units.
+                  Configure sync/solo settings below.
+                </div>
               </div>
             </div>
           )}

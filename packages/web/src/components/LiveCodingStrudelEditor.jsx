@@ -16,22 +16,37 @@ const LiveCodingStrudelEditor = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentCode, setCurrentCode] = useState(initialCode || 'sound("bd hh sd oh")');
 
-  // Initialize Strudel editor
+  // Initialize Strudel editor - ensure complete isolation like StrudelReplTest.jsx
   useEffect(() => {
     if (containerRef.current && !editorRef.current) {
+      console.log(`LiveCodingStrudelEditor: Initializing isolated REPL for unit ${unitId}`);
+      
+      // Create editor with unique attributes to ensure isolation
       const editor = document.createElement('strudel-editor');
       editor.setAttribute('code', currentCode);
+      
+      // CRITICAL: Add unique identifiers to prevent sharing between units
+      editor.id = `strudel-editor-${unitId}-${Date.now()}`;
+      editor.setAttribute('data-unit-id', unitId);
+      editor.setAttribute('data-instance-id', `${unitId}-${Date.now()}`);
+      
+      // Set sync/solo properties
       editor.sync = sync;
       editor.solo = solo;
       
-      // Add editor to container
+      // Add to container immediately (like StrudelReplTest)
       containerRef.current.appendChild(editor);
       editorRef.current = editor;
       
-      // Wait for editor to be ready and notify parent
+      // Wait for editor to be ready and ensure proper unit connection
       const checkReady = () => {
         if (editor.editor && editor.editor.repl) {
-          console.log(`LiveCodingStrudelEditor ready for unit ${unitId}`);
+          console.log(`LiveCodingStrudelEditor ready for unit ${unitId}`, {
+            editorId: editor.id,
+            hasReplContext: !!editor.editor.repl.context,
+            uniqueInstance: editor.getAttribute('data-instance-id')
+          });
+          
           if (onEditorReady) {
             onEditorReady(editor.editor);
           }
@@ -43,14 +58,22 @@ const LiveCodingStrudelEditor = ({
       setTimeout(checkReady, 100);
     }
 
-    // Cleanup on unmount
+    // Cleanup with proper REPL stopping
     return () => {
+      if (editorRef.current?.editor?.repl) {
+        try {
+          editorRef.current.editor.repl.stop();
+          console.log(`LiveCodingStrudelEditor: Stopped REPL for unit ${unitId}`);
+        } catch (err) {
+          console.warn(`Error stopping REPL for unit ${unitId}:`, err);
+        }
+      }
       if (containerRef.current) {
         containerRef.current.innerHTML = '';
       }
       editorRef.current = null;
     };
-  }, []);
+  }, [unitId]); // Include unitId to recreate when unit changes
 
   // Update sync/solo when props change
   useEffect(() => {
@@ -63,29 +86,38 @@ const LiveCodingStrudelEditor = ({
   // Update code when initialCode changes
   useEffect(() => {
     if (editorRef.current?.editor && initialCode !== currentCode) {
+      console.log(`LiveCodingStrudelEditor: Updating code for unit ${unitId}:`, initialCode);
       setCurrentCode(initialCode);
       editorRef.current.editor.setCode(initialCode);
       
-      // Auto-evaluate the new code (like the "Update & Run" button does)
-      // This enables automatic evaluation when hover interactions update the code
-      const autoEvaluate = async () => {
-        if (editorRef.current?.editor?.repl) {
-          console.log(`LiveCodingStrudelEditor: Auto-evaluating new code for unit ${unitId}`);
-          
-          // Use unit instance's evaluate method if available (includes sample re-registration)
-          if (unitInstance && typeof unitInstance.evaluate === 'function') {
-            console.log(`Using LiveCodingUnit.evaluate() for automatic sample registration`);
-            await unitInstance.evaluate();
-          } else {
-            // Fallback to direct evaluation
-            console.log(`Using direct REPL evaluation (no unit instance available)`);
-            editorRef.current.editor.repl.evaluate(initialCode);
-          }
-        }
-      };
+      // Auto-evaluate when code changes from hover interactions (not initial placeholder)
+      const isRealPattern = initialCode && 
+        !initialCode.includes('Waiting for evolutionary sounds') &&
+        !initialCode.includes('Double-click sounds in the tree') &&
+        initialCode.trim().length > 0 &&
+        initialCode.includes('s('); // Contains sample pattern
       
-      // Small delay to ensure editor is ready for evaluation
-      setTimeout(autoEvaluate, 100);
+      if (isRealPattern) {
+        console.log(`LiveCodingStrudelEditor: Auto-evaluating pattern for unit ${unitId}`);
+        
+        // Auto-evaluate with proper unit isolation
+        const autoEvaluate = async () => {
+          if (editorRef.current?.editor?.repl) {
+            // Use unit instance's evaluate method to ensure proper sample registration
+            if (unitInstance && typeof unitInstance.evaluate === 'function') {
+              console.log(`Auto-evaluating via LiveCodingUnit.evaluate() for unit ${unitId}`);
+              await unitInstance.evaluate();
+            } else {
+              // Fallback to direct evaluation
+              console.log(`Auto-evaluating via direct REPL for unit ${unitId}`);
+              editorRef.current.editor.repl.evaluate(initialCode);
+            }
+          }
+        };
+        
+        // Small delay to ensure editor is ready
+        setTimeout(autoEvaluate, 100);
+      }
     }
   }, [initialCode, unitId, unitInstance]);
 
@@ -108,17 +140,20 @@ const LiveCodingStrudelEditor = ({
       const code = editorRef.current.editor.code;
       setCurrentCode(code);
       
+      const instanceId = editorRef.current.getAttribute('data-instance-id');
+      console.log(`LiveCodingStrudelEditor: Manual evaluation for unit ${unitId}, instance ${instanceId}`);
+      
       if (onCodeChange) {
         onCodeChange(code);
       }
       
       // Use unit instance's evaluate method if available (includes sample re-registration)
       if (unitInstance && typeof unitInstance.evaluate === 'function') {
-        console.log(`Using LiveCodingUnit.evaluate() for better sample registration`);
+        console.log(`Using LiveCodingUnit.evaluate() for better sample registration for unit ${unitId}`);
         await unitInstance.evaluate();
       } else {
-        // Fallback to direct evaluation
-        console.log(`Using direct REPL evaluation (no unit instance available)`);
+        // Fallback to direct evaluation with unit-specific logging
+        console.log(`Using direct REPL evaluation for unit ${unitId} (no unit instance available)`);
         editorRef.current.editor.repl.evaluate(code);
       }
     }
