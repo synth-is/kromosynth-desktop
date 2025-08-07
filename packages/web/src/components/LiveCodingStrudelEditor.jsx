@@ -7,6 +7,7 @@ const LiveCodingStrudelEditor = ({
   initialCode, 
   onCodeChange, 
   onEditorReady,
+  unitInstance = null, // Add unit instance prop
   sync = true,
   solo = false
 }) => {
@@ -81,7 +82,7 @@ const LiveCodingStrudelEditor = ({
     }
   };
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
     if (editorRef.current?.editor?.repl) {
       const code = editorRef.current.editor.code;
       setCurrentCode(code);
@@ -90,7 +91,15 @@ const LiveCodingStrudelEditor = ({
         onCodeChange(code);
       }
       
-      editorRef.current.editor.repl.evaluate(code);
+      // Use unit instance's evaluate method if available (includes sample re-registration)
+      if (unitInstance && typeof unitInstance.evaluate === 'function') {
+        console.log(`Using LiveCodingUnit.evaluate() for better sample registration`);
+        await unitInstance.evaluate();
+      } else {
+        // Fallback to direct evaluation
+        console.log(`Using direct REPL evaluation (no unit instance available)`);
+        editorRef.current.editor.repl.evaluate(code);
+      }
     }
   };
 

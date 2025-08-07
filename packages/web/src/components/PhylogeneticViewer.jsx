@@ -135,6 +135,61 @@ const PhylogeneticViewer = ({
     });
   }, [experiment, evoRunId, hasAudioInteraction, onCellHover]);
 
+  // Node double-click handler for LiveCodingUnit
+  const handleNodeDoubleClick = useCallback((nodeData) => {
+    if (!hasAudioInteraction) return;
+    
+    console.log('Double-click on node:', nodeData.id);
+    
+    // Check if a LiveCodingUnit is selected
+    const selectedUnitElement = document.querySelector('[data-selected-unit-type="LIVE_CODING"]');
+    const selectedUnitId = selectedUnitElement?.getAttribute('data-selected-unit-id');
+    
+    if (selectedUnitId && window.getUnitInstance) {
+      const liveCodingUnit = window.getUnitInstance(selectedUnitId);
+      
+      if (liveCodingUnit && liveCodingUnit.type === 'LIVE_CODING') {
+        console.log('Adding sound to LiveCodingUnit:', selectedUnitId);
+        
+        // Create cell data for the LiveCodingUnit
+        const cellData = {
+          genomeId: nodeData.id,
+          experiment: experiment || 'unknown',
+          evoRunId: evoRunId || 'unknown',
+          duration: nodeData.duration || 2,
+          noteDelta: nodeData.noteDelta || 0,
+          pitch: nodeData.noteDelta || 0,
+          velocity: nodeData.velocity || 0.8,
+          // If we have the genome URL, include it
+          genomeUrl: nodeData.genomeUrl
+        };
+        
+        // Add sound to the live coding unit's sample bank
+        liveCodingUnit.addSoundToBank(cellData).then(result => {
+          if (result.strudelRegistered) {
+            console.log('Sound successfully added and registered:', result.sampleName);
+          } else {
+            console.log('Sound added to bank, awaiting Strudel registration:', result.sampleName);
+            // Show a notification that the user needs to open the Live Code tab
+            const notification = document.createElement('div');
+            notification.innerHTML = `
+              <div class="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-yellow-600 text-white px-4 py-2 rounded shadow-lg z-50">
+                Sound added! Open the Live Code tab to complete setup.
+              </div>
+            `;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 3000);
+          }
+        }).catch(error => {
+          console.error('Failed to add sound to LiveCodingUnit:', error);
+        });
+      }
+    } else if (onCellHover) {
+      // Fallback: use the download functionality
+      downloadNodeSound(nodeData);
+    }
+  }, [experiment, evoRunId, hasAudioInteraction, downloadNodeSound]);
+
   // Replace drawCurvedPath with a straight line function
   const drawLine = useCallback((ctx, x1, y1, x2, y2) => {
     ctx.beginPath();
@@ -511,12 +566,12 @@ const PhylogeneticViewer = ({
       if (node && hasAudioInteraction) {
         event.preventDefault();
         event.stopPropagation();
-        downloadNodeSound(node);
+        handleNodeDoubleClick(node);
       }
     });
 
     return initialTransform;
-  }, [findNode, handleNodeMouseOver, handleNodeClick, downloadNodeSound, hasAudioInteraction, onAudioInteraction, renderCanvas, silentMode, debugLog]);
+  }, [findNode, handleNodeMouseOver, handleNodeClick, handleNodeDoubleClick, hasAudioInteraction, onAudioInteraction, renderCanvas, silentMode, debugLog]);
 
   // Initialize visualization
   useEffect(() => {

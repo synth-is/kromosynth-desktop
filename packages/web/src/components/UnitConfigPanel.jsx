@@ -1,11 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Code, Play, Square, RefreshCw, Bug, ChevronUp, ChevronDown } from 'lucide-react';
-import StrudelEditor from './StrudelEditor';
-import ChuckEditor from './ChuckEditor';
+import { X, ChevronUp, ChevronDown } from 'lucide-react';
 import LiveCodingStrudelEditor from './LiveCodingStrudelEditor';
-import { DEFAULT_STRUDEL_CODE, UNIT_TYPES } from '../constants';
-import '@strudel/repl';
-import { useStrudelPattern } from './useStrudelPattern';
+import { UNIT_TYPES } from '../constants';
 import { useUnits } from '../UnitsContext'; // Add this import for useUnits
 
 const Slider = ({ label, value, onChange, min = 0, max = 1, step = 0.01, centered = false }) => (
@@ -281,36 +277,8 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
     resolvedInstance: !!actualInstance
   });
 
-  const [showDebugger, setShowDebugger] = useState(false);
-  const [activeTab, setActiveTab] = useState(unit.type === UNIT_TYPES.LIVE_CODING ? 'Live Code' : 'Unit');
-  const [liveCodeEngine, setLiveCodeEngine] = useState(unit.liveCodeEngine || 'Strudel');
-  const editorRef = useRef(null);
+  const [activeTab, setActiveTab] = useState('Unit');
   const [isCollapsed, setIsCollapsed] = useState(false);
-  
-  const {
-    debugLog,
-    applyPatternFromEditor,
-    testPatternUpdate,
-    clearDebugLog,
-    registerReplInstance,
-    unregisterReplInstance
-  } = useStrudelPattern(unit.id);
-
-  const handleEditorReady = (editor) => {
-    console.log(`Strudel editor ready for unit ${unit.id}`);
-    editorRef.current = editor;
-    registerReplInstance(editor);
-
-    // Initialize with a random pattern
-    const randomFastValue = Math.floor(Math.random() * 10) + 1;
-    const waveforms = ["sawtooth", "square", "triangle", "sine"];
-    const randomWaveform = waveforms[Math.floor(Math.random() * waveforms.length)];
-    const code = `note("c2 <eb2 <g2 g1>>".fast(${randomFastValue})).sound("${randomWaveform}")`;
-    
-    editor.repl.setCode(code);
-    editor.repl.evaluate(code);
-    editor.repl.stop(); // Start stopped
-  };
 
   const handleCodeChange = (newCode) => {
     console.log(`Code change in unit ${unit.id}:`, newCode);
@@ -318,34 +286,6 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
       ...unit,
       strudelCode: newCode
     });
-  };
-
-  const handleEngineChange = (engine) => {
-    setLiveCodeEngine(engine);
-    onUpdateUnit(unit.id, { ...unit, liveCodeEngine: engine });
-  };
-
-  const handlePlay = () => {
-    if (editorRef.current?.repl) {
-      console.log(`Starting playback for unit ${unit.id}`);
-      editorRef.current.repl.start();
-    }
-  };
-
-  const handleStop = () => {
-    if (editorRef.current?.repl) {
-      console.log(`Stopping playback for unit ${unit.id}`);
-      editorRef.current.repl.stop();
-    }
-  };
-
-  const handleApplyChanges = () => {
-    const editor = editorRef.current;
-    if (editor?.repl) {
-      console.log(`Applying changes for unit ${unit.id}`);
-      const currentCode = editor.repl.getCode();
-      editor.repl.evaluate(currentCode);
-    }
   };
 
   const handleValueChange = (key, value) => {
@@ -356,17 +296,6 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
     
     onUpdateUnit(unit.id, { ...unit, [key]: value });
   };
-
-  // Cleanup when component unmounts or unit changes
-  useEffect(() => {
-    return () => {
-      if (editorRef.current?.repl) {
-        console.log(`Cleaning up editor for unit ${unit.id}`);
-        unregisterReplInstance();
-        editorRef.current = null;
-      }
-    };
-  }, [unit.id]);
 
   // Initialize playbackMode if not set
   useEffect(() => {
@@ -419,17 +348,34 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
           >
             {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
           </button>
-          {['Unit', 'Sampler', 'Live Code'].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-3 py-1 text-sm rounded-sm ${activeTab === tab 
-                ? 'bg-blue-900/30 text-white' 
-                : 'text-gray-400 hover:text-white'}`}
-            >
-              {tab}
-            </button>
-          ))}
+          {/* Dynamic tab rendering based on unit type */}
+          {unit.type === UNIT_TYPES.LIVE_CODING ? (
+            // LiveCodingUnit: Show Unit and Live Code tabs
+            ['Unit', 'Live Code'].map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-3 py-1 text-sm rounded-sm ${activeTab === tab 
+                  ? 'bg-blue-900/30 text-white' 
+                  : 'text-gray-400 hover:text-white'}`}
+              >
+                {tab}
+              </button>
+            ))
+          ) : (
+            // Other unit types: Show Unit and Sampler tabs
+            ['Unit', 'Sampler'].map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-3 py-1 text-sm rounded-sm ${activeTab === tab 
+                  ? 'bg-blue-900/30 text-white' 
+                  : 'text-gray-400 hover:text-white'}`}
+              >
+                {tab}
+              </button>
+            ))
+          )}
         </div>
         <button
           onClick={onClose}
@@ -714,135 +660,101 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
             </>
           )}
 
-          {activeTab === 'Live Code' && (
+          {activeTab === 'Live Code' && unit.type === UNIT_TYPES.LIVE_CODING && (
             <div className="space-y-4">
-              <div className="flex gap-1 p-1 bg-gray-800 rounded">
-                <button
-                  onClick={() => handleEngineChange('Strudel')}
-                  className={`flex-1 px-2 py-1 rounded text-xs ${
-                    liveCodeEngine === 'Strudel'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-700 text-gray-400 hover:text-white'
-                  }`}
-                >
-                  Strudel
-                </button>
-                <button
-                  onClick={() => handleEngineChange('ChucK')}
-                  className={`flex-1 px-2 py-1 rounded text-xs ${
-                    liveCodeEngine === 'ChucK'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-700 text-gray-400 hover:text-white'
-                  }`}
-                >
-                  ChucK
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2 p-2 bg-gray-800/50 rounded">
-                <button
-                  onClick={handleApplyChanges}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-sm flex items-center gap-1 text-xs"
-                >
-                  <RefreshCw size={12} />
-                  Apply Changes
-                </button>
-                
-                <button
-                  onClick={testPatternUpdate}
-                  className="px-3 py-1.5 bg-purple-600 text-white rounded-sm flex items-center gap-1 text-xs"
-                >
-                  <Code size={12} />
-                  Test Update
-                </button>
-
-                <button
-                  onClick={() => setShowDebugger(!showDebugger)}
-                  className="px-3 py-1.5 bg-amber-600 text-white rounded-sm flex items-center gap-1 text-xs"
-                >
-                  <Bug size={12} />
-                  {showDebugger ? 'Hide Debug' : 'Show Debug'}
-                </button>
-
-                <div className="flex-1" />
-
-                <button
-                  onClick={handlePlay}
-                  className="p-1.5 bg-green-600 text-white rounded-sm"
-                >
-                  <Play size={14} />
-                </button>
-                
-                <button
-                  onClick={handleStop}
-                  className="p-1.5 bg-red-600 text-white rounded-sm"
-                >
-                  <Square size={14} />
-                </button>
-              </div>
-
-              {showDebugger && (
-                <div className="p-2 bg-gray-800/50 rounded space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm text-white font-medium">Pattern Debug Log</h3>
-                    <button
-                      onClick={clearDebugLog}
-                      className="text-xs text-gray-400 hover:text-white"
-                    >
-                      Clear Log
-                    </button>
-                  </div>
-                  <div className="space-y-1 max-h-40 overflow-y-auto text-xs">
-                    {debugLog.map((entry, i) => (
-                      <div
-                        key={i}
-                        className={`p-1 rounded ${
-                          entry.unitId === unit.id 
-                            ? 'bg-blue-900/30 text-blue-200' 
-                            : 'bg-gray-800/50 text-gray-400'
-                        }`}
-                      >
-                        <span className="text-gray-500">{entry.timestamp.split('T')[1].split('.')[0]}</span>
-                        {' - '}
-                        <span className="text-gray-400">Unit {entry.unitId}:</span>
-                        {' '}
-                        {entry.message}
-                      </div>
-                    ))}
-                  </div>
+              {/* Quick Test Button */}
+              <div className="p-2 bg-gray-800/50 rounded border border-gray-700">
+                <div className="flex gap-2 mb-2">
+                  <button
+                    onClick={async () => {
+                      console.log('🧪 Manual test: trying to play existing samples...');
+                      console.log('🔍 Available actualInstance properties:', Object.keys(actualInstance || {}));
+                      console.log('🔍 actualInstance.replInstance exists:', !!actualInstance?.replInstance);
+                      console.log('🔍 actualInstance.editorInstance exists:', !!actualInstance?.editorInstance);
+                      
+                      if (actualInstance && actualInstance.replInstance) {
+                        try {
+                          console.log('🧪 Using actualInstance.replInstance for test...');
+                          await actualInstance.replInstance.evaluate('s("evo_0").gain(0.5)');
+                          console.log('✅ Test evaluation sent to Strudel via replInstance');
+                        } catch (err) {
+                          console.error('❌ Test evaluation via replInstance failed:', err);
+                        }
+                      } else if (actualInstance && actualInstance.editorInstance) {
+                        try {
+                          console.log('🧪 Using actualInstance.editorInstance for test...');
+                          await actualInstance.editorInstance.repl?.evaluate('s("evo_0").gain(0.5)');
+                          console.log('✅ Test evaluation sent to Strudel via editorInstance.repl');
+                        } catch (err) {
+                          console.error('❌ Test evaluation via editorInstance.repl failed:', err);
+                        }
+                      } else {
+                        console.log('❌ No suitable REPL interface found for testing');
+                        console.log('🔍 actualInstance:', actualInstance);
+                      }
+                      
+                      // Also try to manually verify sample availability
+                      if (actualInstance) {
+                        const sampleInfo = actualInstance.getSampleBankInfo?.();
+                        console.log('🔍 Sample bank info:', sampleInfo);
+                        
+                        // Test audio analysis of current samples
+                        if (actualInstance.sampleBank && actualInstance.sampleBank.size > 0) {
+                          console.log('🧪 Testing audio content of samples in bank...');
+                          actualInstance.sampleBank.forEach((sampleData, genomeId) => {
+                            if (sampleData.metadata?.audioBuffer) {
+                              console.log(`🔍 Analyzing sample ${sampleData.name}:`);
+                              actualInstance.analyzeAudioContent(sampleData.metadata.audioBuffer);
+                            }
+                          });
+                        }
+                      }
+                    }}
+                    className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded text-white"
+                  >
+                    Test & Analyze Samples
+                  </button>
+                  <button
+                    onClick={async () => {
+                      console.log('🧪 Adding test tone sample...');
+                      if (actualInstance && actualInstance.addTestSample) {
+                        try {
+                          const testSampleName = await actualInstance.addTestSample();
+                          console.log('✅ Test sample added:', testSampleName);
+                        } catch (err) {
+                          console.error('❌ Failed to add test sample:', err);
+                        }
+                      } else {
+                        console.log('❌ No addTestSample method available');
+                      }
+                    }}
+                    className="px-3 py-1 text-xs bg-green-600 hover:bg-green-700 rounded text-white"
+                  >
+                    Add Test Tone
+                  </button>
                 </div>
-              )}
-
+                <div className="text-xs text-gray-400">
+                  Test playback & analyze audio content, or add a test tone with known audio
+                </div>
+              </div>
+              
+              {/* Live Coding Editor for LiveCodingUnit only */}
               <div className="relative flex-1" style={{ minHeight: '300px' }}>
-                {unit.type === UNIT_TYPES.LIVE_CODING ? (
                   <LiveCodingStrudelEditor
                     key={unit.id}
                     unitId={unit.id}
-                    initialCode={unit.strudelCode || DEFAULT_STRUDEL_CODE}
+                    unitInstance={actualInstance.instance} // Pass the unit instance
+                    initialCode={unit.strudelCode || '// Waiting for evolutionary sounds...\n// Double-click sounds in the tree to add them here'}
                     onCodeChange={handleCodeChange}
                     onEditorReady={(editor) => {
                       console.log(`LiveCodingUnit ${unit.id}: Editor ready`);
                       if (actualInstance && actualInstance.setReplInstance) {
-                        actualInstance.setReplInstance(editor);
-                      }
-                      if (handleEditorReady) {
-                        handleEditorReady(editor);
+                        actualInstance.setReplInstance(editor, handleCodeChange);
                       }
                     }}
                     sync={unit.sync}
                     solo={unit.solo}
                   />
-                ) : liveCodeEngine === 'Strudel' ? (
-                  <StrudelEditor
-                    key={unit.id}
-                    unitId={unit.id}
-                    initialCode={unit.strudelCode || DEFAULT_STRUDEL_CODE}
-                    onCodeChange={handleCodeChange}
-                    onEditorReady={handleEditorReady}
-                  />
-                ) : (
-                  <ChuckEditor />
-                )}
               </div>
             </div>
           )}

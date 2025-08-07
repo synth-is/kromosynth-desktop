@@ -325,9 +325,9 @@ export default function UnitsPanel({
       } else if (unit.type === UNIT_TYPES.LOOPING) {
         unit.handleCellHover(formattedData);
       } else if (unit.type === UNIT_TYPES.LIVE_CODING) {
-        // For live coding units, we'll handle adding sounds via double-click
-        // This is just hover feedback for now
-        console.log('LiveCodingUnit hover:', formattedData);
+        // For live coding units, handle hover just like looping units
+        // This automatically adds sounds to the sample bank on hover
+        unit.handleCellHover(formattedData);
       }
     }
   }, [selectedUnitId, onCellHover, handleCellHover]);
@@ -1705,13 +1705,19 @@ const renderLiveCodingControls = (unit) => {
   };
 
   return (
-    <div className="h-fit max-h-[calc(100vh-5rem)] bg-gray-900/95 backdrop-blur border-r border-gray-800 overflow-y-auto">
+    <div 
+      className="h-fit max-h-[calc(100vh-5rem)] bg-gray-900/95 backdrop-blur border-r border-gray-800 overflow-y-auto"
+      data-selected-unit-id={selectedUnitId}
+      data-selected-unit-type={units.find(u => u.id === selectedUnitId)?.type}
+    >
       <div className="p-2 flex flex-col gap-2 min-w-[16rem]">
         {/* Units list container with minimum height */}
         <div className="min-h-[100px] flex flex-col gap-2">
           {units.map(unit => (
             <div 
               key={unit.id}
+              data-unit-id={unit.id}
+              data-unit-type={unit.type}
               onClick={() => onSelectUnit(unit.id)}
               className={`bg-gray-800/50 rounded-sm p-2 cursor-pointer select-none transition-all
                 ${selectedUnitId === unit.id ? 'ring-1 ring-blue-500' : ''}`}

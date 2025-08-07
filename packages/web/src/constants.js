@@ -76,7 +76,7 @@ export const DEFAULT_UNIT_CONFIGS = {
     startOffset: 0
   },
   [UNIT_TYPES.LIVE_CODING]: {
-    strudelCode: DEFAULT_STRUDEL_CODE,
+    strudelCode: '// Waiting for evolutionary sounds...\n// Double-click sounds in the tree to add them here',
     liveCodeEngine: 'Strudel',
     volume: -10,
     active: true,
