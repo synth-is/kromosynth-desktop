@@ -114,7 +114,7 @@ export class LiveCodingUnit extends BaseUnit {
           if (this.autoGenerateCode && this.sampleBank.size > 0) {
             const sampleNames = Array.from(this.sampleBank.values()).map(s => s.name);
             // Generate code with the last added sample (this will include all samples in the pattern)
-            this.generateCodeWithNewSample(sampleNames[sampleNames.length - 1]);
+            await this.generateCodeWithNewSample(sampleNames[sampleNames.length - 1]);
             console.log(`LiveCodingUnit ${this.id}: Generated code for ${sampleNames.length} samples after registration`);
           }
         }
@@ -259,7 +259,7 @@ export class LiveCodingUnit extends BaseUnit {
       // Always generate code if auto-generate is enabled, regardless of registration status
       // The code will be applied when the editor opens if not registered yet
       if (this.autoGenerateCode) {
-        this.generateCodeWithNewSample(sampleName);
+        await this.generateCodeWithNewSample(sampleName);
         
         // If Strudel is ready and registered, the code is already set in generateCodeWithNewSample
         // If not ready, the code will be applied when the editor opens via setReplInstance
@@ -647,7 +647,7 @@ export class LiveCodingUnit extends BaseUnit {
       
       // Generate code using the test sample
       if (this.autoGenerateCode) {
-        this.generateCodeWithNewSample(sampleName);
+        await this.generateCodeWithNewSample(sampleName);
       }
       
       console.log('✅ Test sample added successfully:', sampleName);
@@ -801,7 +801,7 @@ export class LiveCodingUnit extends BaseUnit {
    * Generate new Strudel code that incorporates a newly added sample
    * @param {string} sampleName - Name of the newly added sample
    */
-  generateCodeWithNewSample(sampleName) {
+  async generateCodeWithNewSample(sampleName) {
     // Get all sample names 
     const existingSampleNames = Array.from(this.sampleBank.values()).map(s => s.name);
     
@@ -823,7 +823,14 @@ export class LiveCodingUnit extends BaseUnit {
 
     // Update the editor with new code
     this.setCode(this.currentCode); // Use setCode to trigger notifications
-    console.log(`LiveCodingUnit ${this.id}: Generated simple pattern code (samples registered programmatically)`);
+    
+    // Automatically evaluate the new code (like other units do)
+    if (this.replInstance) {
+      console.log(`LiveCodingUnit ${this.id}: Auto-evaluating new code for immediate playback`);
+      await this.evaluate();
+    }
+    
+    console.log(`LiveCodingUnit ${this.id}: Generated and auto-evaluated simple pattern code`);
     console.log('Generated pattern code:');
     console.log(this.currentCode);
   }
@@ -957,8 +964,8 @@ export class LiveCodingUnit extends BaseUnit {
    * Evaluate the current code
    */
   async evaluate() {
-    if (this.replInstance) {
-      const code = this.replInstance.getCode();
+    if (this.replInstance && this.editorInstance) {
+      const code = this.editorInstance.code; // Get code from editor instance, not from replInstance
       
       // Debug: Check sample availability before evaluation
       console.log(`LiveCodingUnit ${this.id}: About to evaluate code: ${code}`);
@@ -1013,9 +1020,32 @@ export class LiveCodingUnit extends BaseUnit {
         console.log('- repl.context.samples function exists:', typeof this.replInstance.context?.samples === 'function');
       }
       
-      this.replInstance.evaluate(code);
-      this.currentCode = code;
-      console.log(`LiveCodingUnit ${this.id}: Evaluated code: ${code}`);
+      // Use a more comprehensive evaluation approach - mimic what "Update & Run" does
+      try {
+        // First try to stop any existing patterns to avoid overlap
+        if (this.replInstance.stop) {
+          this.replInstance.stop();
+        }
+        
+        // Then evaluate the new code
+        this.replInstance.evaluate(code);
+        
+        // Optionally start playback if it's not already playing
+        // (some patterns need explicit start)
+        if (this.replInstance.start && !this.replInstance.isPlaying?.()) {
+          setTimeout(() => {
+            this.replInstance.start?.();
+          }, 100);
+        }
+        
+        this.currentCode = code;
+        console.log(`LiveCodingUnit ${this.id}: Successfully evaluated and started code: ${code}`);
+        
+      } catch (err) {
+        console.error(`LiveCodingUnit ${this.id}: Error during evaluation:`, err);
+      }
+    } else {
+      console.warn(`LiveCodingUnit ${this.id}: Cannot evaluate - missing replInstance or editorInstance`);
     }
   }
 

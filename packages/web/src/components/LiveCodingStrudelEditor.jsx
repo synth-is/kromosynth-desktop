@@ -65,8 +65,29 @@ const LiveCodingStrudelEditor = ({
     if (editorRef.current?.editor && initialCode !== currentCode) {
       setCurrentCode(initialCode);
       editorRef.current.editor.setCode(initialCode);
+      
+      // Auto-evaluate the new code (like the "Update & Run" button does)
+      // This enables automatic evaluation when hover interactions update the code
+      const autoEvaluate = async () => {
+        if (editorRef.current?.editor?.repl) {
+          console.log(`LiveCodingStrudelEditor: Auto-evaluating new code for unit ${unitId}`);
+          
+          // Use unit instance's evaluate method if available (includes sample re-registration)
+          if (unitInstance && typeof unitInstance.evaluate === 'function') {
+            console.log(`Using LiveCodingUnit.evaluate() for automatic sample registration`);
+            await unitInstance.evaluate();
+          } else {
+            // Fallback to direct evaluation
+            console.log(`Using direct REPL evaluation (no unit instance available)`);
+            editorRef.current.editor.repl.evaluate(initialCode);
+          }
+        }
+      };
+      
+      // Small delay to ensure editor is ready for evaluation
+      setTimeout(autoEvaluate, 100);
     }
-  }, [initialCode]);
+  }, [initialCode, unitId, unitInstance]);
 
   const handleToggle = () => {
     if (editorRef.current?.editor?.repl) {

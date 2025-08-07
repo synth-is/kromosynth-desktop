@@ -277,8 +277,19 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
     resolvedInstance: !!actualInstance
   });
 
-  const [activeTab, setActiveTab] = useState('Unit');
+  const [activeTab, setActiveTab] = useState(() => {
+    // For LiveCodingUnits, default to 'Live Code' tab to auto-initialize Strudel
+    return unit.type === UNIT_TYPES.LIVE_CODING ? 'Live Code' : 'Unit';
+  });
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Switch to Live Code tab when unit becomes a LiveCodingUnit
+  useEffect(() => {
+    if (unit.type === UNIT_TYPES.LIVE_CODING && activeTab === 'Unit') {
+      console.log(`Switching to Live Code tab for LiveCodingUnit ${unit.id}`);
+      setActiveTab('Live Code');
+    }
+  }, [unit.type, activeTab]);
 
   const handleCodeChange = (newCode) => {
     console.log(`Code change in unit ${unit.id}:`, newCode);
@@ -743,7 +754,7 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
                   <LiveCodingStrudelEditor
                     key={unit.id}
                     unitId={unit.id}
-                    unitInstance={actualInstance.instance} // Pass the unit instance
+                    unitInstance={actualInstance} // Pass the unit instance (actualInstance IS the instance)
                     initialCode={unit.strudelCode || '// Waiting for evolutionary sounds...\n// Double-click sounds in the tree to add them here'}
                     onCodeChange={handleCodeChange}
                     onEditorReady={(editor) => {
