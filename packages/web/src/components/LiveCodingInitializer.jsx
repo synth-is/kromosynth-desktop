@@ -25,7 +25,7 @@ const LiveCodingInitializer = ({ units }) => {
         console.log(`LiveCodingInitializer: Creating REPL for unit ${unit.id}`);
         
         // Create editor exactly like StrudelReplTest.jsx
-        const editor = document.createElement('strudel-editor');
+  const editor = document.createElement('strudel-editor');
         editor.setAttribute('code', unit.strudelCode || '// Waiting for evolutionary sounds...');
         editor.sync = unit.sync !== undefined ? unit.sync : true;
         editor.solo = unit.solo !== undefined ? unit.solo : false;
@@ -39,13 +39,14 @@ const LiveCodingInitializer = ({ units }) => {
         
         // Wait for REPL to be ready and connect to unit instance
         const checkReady = () => {
-          if (editor.editor && editor.editor.repl) {
+      if (editor.editor && editor.editor.repl) {
             console.log(`LiveCodingInitializer: REPL ready for unit ${unit.id}`);
             
             // Connect to unit instance
             const unitInstance = unitsRef.current?.get(unit.id);
             if (unitInstance && unitInstance.setReplInstance) {
-              unitInstance.setReplInstance(editor.editor);
+        // Pass both the editor instance and the strudel-editor element (for sync/solo updates)
+        unitInstance.setReplInstance(editor.editor, editor);
               console.log(`LiveCodingInitializer: Connected REPL to unit ${unit.id}`);
             }
           } else {

@@ -123,6 +123,7 @@ const PhylogeneticViewer = ({
     if (!hasAudioInteraction || !onCellHover) return;
     
     onCellHover({
+      eventId: Date.now(),
       data: nodeData,
       experiment,
       evoRunId,
@@ -145,14 +146,14 @@ const PhylogeneticViewer = ({
     const selectedUnitElement = document.querySelector('[data-selected-unit-type="LIVE_CODING"]');
     const selectedUnitId = selectedUnitElement?.getAttribute('data-selected-unit-id');
     
-    if (selectedUnitId && window.getUnitInstance) {
+  if (selectedUnitId && window.getUnitInstance) {
       const liveCodingUnit = window.getUnitInstance(selectedUnitId);
       
       if (liveCodingUnit && liveCodingUnit.type === 'LIVE_CODING') {
         console.log(`Double-click: Adding sound to SPECIFIC LiveCodingUnit: ${selectedUnitId}`);
         
         // Create cell data for the specific LiveCodingUnit
-        const cellData = {
+  const cellData = {
           genomeId: nodeData.id,
           experiment: experiment || 'unknown',
           evoRunId: evoRunId || 'unknown',
@@ -358,6 +359,7 @@ const PhylogeneticViewer = ({
     setNodePlaying(nodeData.id, true);
     
     onCellHover({
+      eventId: Date.now(),
       data: nodeData,
       experiment,
       evoRunId,

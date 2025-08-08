@@ -16,97 +16,98 @@ const UnitStrudelRepl = ({ unitId }) => {
 
   console.log(`UnitStrudelRepl: Component rendered for unit ${unitId}`);
 
-  // Initialize REPL - exactly like StrudelReplTest, no dependencies
+  // Initialize or attach to existing hidden REPL for this unit
   useEffect(() => {
-    if (containerRef.current && !replRef.current && !initializedRef.current) {
-      console.log(`UnitStrudelRepl: Initializing REPL for unit ${unitId}`);
-      initializedRef.current = true;
-      
-      const repl = document.createElement('strudel-editor');
-      repl.setAttribute('code', currentCode);
-      // CRITICAL: Each unit should have isolated sync/solo settings
-      // Default: sync=false for isolation, solo=false for allowing multiple units
-      repl.sync = false; // Changed from true to prevent global sync interference
-      repl.solo = false;
-      
-      containerRef.current.appendChild(repl);
-      replRef.current = repl;
-      
-      console.log(`UnitStrudelRepl: REPL created for unit ${unitId}`);
-      
-      // Wait for editor to be ready and then notify the LiveCodingUnit
-      const checkReady = setInterval(() => {
-        if (repl.editor?.repl) {
-          clearInterval(checkReady);
-          console.log(`UnitStrudelRepl: REPL ready for unit ${unitId}`);
-          
-          // Notify the LiveCodingUnit that the REPL is ready
-          const unit = window.getUnitInstance?.(unitId);
-          if (unit && unit.type === 'LIVE_CODING') {
-            console.log(`UnitStrudelRepl: Setting up ISOLATED LiveCodingUnit ${unitId} instances`);
-            
-            // Apply unit-specific sync/solo settings
-            if (unit.sync !== undefined) {
-              repl.sync = unit.sync;
-              console.log(`UnitStrudelRepl: Applied sync setting for unit ${unitId}:`, unit.sync);
-            }
-            if (unit.solo !== undefined) {
-              repl.solo = unit.solo;
-              console.log(`UnitStrudelRepl: Applied solo setting for unit ${unitId}:`, unit.solo);
-            }
-            
-            // Use the enhanced setReplInstance method that handles pending items
-            // Store reference to the strudel-editor element for sync/solo updates
-            unit.setReplInstance(repl.editor, repl);
-            
-            console.log(`UnitStrudelRepl: LiveCodingUnit ${unitId} is now ready and isolated with sync=${repl.sync}, solo=${repl.solo}`);
-          } else {
-            console.log(`UnitStrudelRepl: Could not find LiveCodingUnit ${unitId}`, unit?.type);
-          }
-          
-          // Register UNIT-SPECIFIC global method for external code updates (hover interactions)
-          const primaryUpdateMethod = (newCode) => {
-            console.log(`UnitStrudelRepl: PRIMARY external code update for UNIT ${unitId} ONLY:`, newCode);
-            
-            // Double-check we're updating the right unit's REPL
-            if (replRef.current?.editor && replRef.current === repl) {
-              console.log(`UnitStrudelRepl: PRIMARY confirmed - updating code for unit ${unitId}`);
-              replRef.current.editor.setCode(newCode);
-              setCurrentCode(newCode);
-            } else {
-              console.error(`UnitStrudelRepl: PRIMARY ISOLATION ERROR - replRef mismatch for unit ${unitId}`);
-            }
-          };
-          
-          window[`updateUnit${unitId}`] = primaryUpdateMethod;
-          console.log(`UnitStrudelRepl: Registered PRIMARY ISOLATED global method updateUnit${unitId}`);
+    if (!containerRef.current || initializedRef.current) return;
+    initializedRef.current = true;
+
+    // Try to locate a hidden editor created by LiveCodingInitializer
+    const hiddenEditor = document.querySelector(`strudel-editor[data-unit-id="${unitId}"]`);
+    if (hiddenEditor) {
+      console.log(`UnitStrudelRepl: Attaching existing hidden REPL for unit ${unitId}`);
+      // Move the existing editor into our visible container
+      containerRef.current.appendChild(hiddenEditor);
+      hiddenEditor.style.display = '';
+      replRef.current = hiddenEditor;
+
+      // Sync local state from the unit’s authoritative current code if available
+      try {
+        const unit = window.getUnitInstance?.(unitId);
+        const unitCode = unit?.currentCode;
+        const liveCode = unitCode || hiddenEditor.editor?.code || hiddenEditor.getAttribute('code') || currentCode;
+        if (unitCode && hiddenEditor.editor) {
+          hiddenEditor.editor.setCode(unitCode);
+          try { hiddenEditor.setAttribute('code', unitCode); } catch {}
         }
-      }, 100);
-      
-      // Store interval for cleanup
-      repl._readyInterval = checkReady;
+        setCurrentCode(liveCode);
+      } catch {}
+
+      // Ensure unit linkage is established
+      const unit = window.getUnitInstance?.(unitId);
+      if (unit && unit.type === 'LIVE_CODING' && hiddenEditor.editor) {
+        unit.setReplInstance(hiddenEditor.editor, hiddenEditor);
+      }
+
+      // Register unit-specific updater
+      window[`updateUnit${unitId}`] = (newCode) => {
+        if (replRef.current?.editor) {
+          replRef.current.editor.setCode(newCode);
+          try { replRef.current.setAttribute('code', newCode); } catch {}
+          setCurrentCode(newCode);
+        }
+      };
+      return () => {
+        // On unmount, don't destroy the editor; move it back to the hidden container if available
+        delete window[`updateUnit${unitId}`];
+        const initializerContainer = document.querySelector('[data-testid="live-coding-initializer"]');
+        if (initializerContainer && replRef.current) {
+          replRef.current.style.display = 'none';
+          initializerContainer.appendChild(replRef.current);
+        }
+        replRef.current = null;
+        initializedRef.current = false;
+      };
     }
 
-    // Cleanup
+    // Fallback removed: wait briefly for initializer to create the editor to avoid duplicates
+    console.log(`UnitStrudelRepl: No hidden REPL found yet for unit ${unitId}, waiting for initializer...`);
+    const waitUntil = Date.now() + 3000; // up to 3s
+    const poll = setInterval(() => {
+      const found = document.querySelector(`strudel-editor[data-unit-id="${unitId}"]`);
+      if (found || Date.now() > waitUntil) {
+        clearInterval(poll);
+        if (found && containerRef.current && !replRef.current) {
+          containerRef.current.appendChild(found);
+          found.style.display = '';
+          replRef.current = found;
+          const unit = window.getUnitInstance?.(unitId);
+          if (unit && unit.type === 'LIVE_CODING' && found.editor) {
+            unit.setReplInstance(found.editor, found);
+          }
+          window[`updateUnit${unitId}`] = (newCode) => {
+            if (replRef.current?.editor) {
+              replRef.current.editor.setCode(newCode);
+              try { replRef.current.setAttribute('code', newCode); } catch {}
+              setCurrentCode(newCode);
+            }
+          };
+        }
+      }
+    }, 100);
+
     return () => {
-      console.log(`UnitStrudelRepl: Cleaning up unit ${unitId}`);
-      initializedRef.current = false;
-      
-      // Clean up global method
       delete window[`updateUnit${unitId}`];
-      
-      if (replRef.current?._readyInterval) {
-        clearInterval(replRef.current._readyInterval);
-      }
-      if (replRef.current?.editor?.repl) {
-        replRef.current.editor.repl.stop();
-      }
-      if (containerRef.current) {
-        containerRef.current.innerHTML = '';
+      clearInterval(poll);
+      // Move back to initializer if present
+      const initializerContainer = document.querySelector('[data-testid="live-coding-initializer"]');
+      if (initializerContainer && replRef.current) {
+        replRef.current.style.display = 'none';
+        initializerContainer.appendChild(replRef.current);
       }
       replRef.current = null;
+      initializedRef.current = false;
     };
-  }, []);
+  }, [unitId]);
 
   // Simple controls
   const handlePlay = (e) => {

@@ -57,6 +57,15 @@ export class LiveCodingUnit extends BaseUnit {
   async setReplInstance(editor, strudelElement = null) {
     console.log(`LiveCodingUnit ${this.id}: setReplInstance called with strudelElement:`, !!strudelElement);
     // Store the instances
+    // If we already have this editor attached, avoid re-processing
+    if (this.editorInstance === editor) {
+      // Still update element reference if it changed
+      if (strudelElement && this.strudelElement !== strudelElement) {
+        this.strudelElement = strudelElement;
+      }
+      return;
+    }
+
     this.replInstance = editor?.repl;
     this.editorInstance = editor;
     this.strudelElement = strudelElement; // Store reference to strudel-editor for sync/solo
@@ -64,6 +73,15 @@ export class LiveCodingUnit extends BaseUnit {
     // Handle any pending samples and code now that REPL is ready
     if (this.replInstance && this.editorInstance) {
       console.log(`LiveCodingUnit ${this.id}: REPL ready - processing pending items`);
+      // Always sync current code into the editor to avoid adopting stale/default code
+      try {
+        if (this.currentCode) {
+          this.editorInstance.setCode(this.currentCode);
+          this.strudelElement?.setAttribute('code', this.currentCode);
+        }
+      } catch (e) {
+        console.warn(`LiveCodingUnit ${this.id}: Failed to apply currentCode on attach`, e);
+      }
       
       // Apply pending samples if any
       if (this.hasPendingSamples) {
@@ -769,6 +787,15 @@ export class LiveCodingUnit extends BaseUnit {
     console.log(`LiveCodingUnit ${this.id}: setCode called with:`, code);
     this.currentCode = code;
     
+    // Keep the DOM element's attribute in sync to avoid web component resetting code on re-attach
+    try {
+      if (this.strudelElement) {
+        this.strudelElement.setAttribute('code', code);
+      }
+    } catch (e) {
+      console.warn(`LiveCodingUnit ${this.id}: failed to sync strudel element code attribute`, e);
+    }
+    
     // CRITICAL: Persist code to unit config so it survives unit switching
     // Find the unit in the UnitsPanel and update its strudelCode
     try {
@@ -793,7 +820,9 @@ export class LiveCodingUnit extends BaseUnit {
     // First priority: Use direct REPL instance if available
     if (this.editorInstance) {
       console.log(`LiveCodingUnit ${this.id}: Updating REPL via direct editor instance`);
-      this.editorInstance.setCode(code);
+      try { this.editorInstance.setCode(code); } catch {}
+      // Also sync attribute for good measure
+      try { this.strudelElement?.setAttribute('code', code); } catch {}
       return;
     }
     
@@ -802,6 +831,8 @@ export class LiveCodingUnit extends BaseUnit {
     if (updateMethod) {
       console.log(`LiveCodingUnit ${this.id}: Updating REPL via unit-specific global method`);
       updateMethod(code);
+  // Ensure attribute reflects the latest code
+  try { this.strudelElement?.setAttribute('code', code); } catch {}
     } else {
       console.log(`LiveCodingUnit ${this.id}: No update method available - storing code for later`);
       // Store code for when the REPL becomes available
@@ -916,7 +947,8 @@ export class LiveCodingUnit extends BaseUnit {
    */
   async evaluate() {
     if (this.replInstance && this.editorInstance) {
-      const code = this.editorInstance.code; // Get code from editor instance
+  // Prefer the unit’s currentCode as the source of truth
+  const code = this.currentCode || this.editorInstance.code;
       
       // Debug: Check sample availability before evaluation
       console.log(`LiveCodingUnit ${this.id}: About to evaluate code: ${code}`);
@@ -988,9 +1020,9 @@ export class LiveCodingUnit extends BaseUnit {
         // Just evaluate the code without trying to manually start/stop
         // Let Strudel handle its own lifecycle
         console.log(`LiveCodingUnit ${this.id}: Attempting to evaluate code:`, code);
-        this.replInstance.evaluate(code);
+  this.replInstance.evaluate(code);
         
-        this.currentCode = code;
+  this.currentCode = code;
         console.log(`LiveCodingUnit ${this.id}: Successfully evaluated code: ${code}`);
         
       } catch (err) {

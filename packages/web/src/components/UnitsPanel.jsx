@@ -8,6 +8,7 @@ import { LiveCodingUnit } from '../units/LiveCodingUnit';
 import { CellDataFormatter } from '../utils/CellDataFormatter';
 import { useUnits } from '../UnitsContext';
 import UnitStrudelRepl from './UnitStrudelRepl';
+import LiveCodingInitializer from './LiveCodingInitializer';
 
 // Enhanced Slider component to show default value markers
 const Slider = ({ 
@@ -123,6 +124,15 @@ export default function UnitsPanel({
   const [showTypeSelector, setShowTypeSelector] = useState(false);
   const { updateUnitConfig, unitsRef: contextUnitsRef } = useUnits();
   const unitsRef = useRef(new Map());
+  const lastHoverEventIdRef = useRef(null);
+  const selectionChangedAtRef = useRef(0);
+
+  // Track when the selected unit changes to gate stale hover events
+  useEffect(() => {
+    selectionChangedAtRef.current = Date.now();
+    // Reset last processed hover to allow fresh events for the new selection
+    lastHoverEventIdRef.current = null;
+  }, [selectedUnitId]);
 
   // Handle unit config updates
   useEffect(() => {
@@ -374,7 +384,18 @@ export default function UnitsPanel({
     if (!selectedUnitId || !onCellHover) {
       return;
     }
-  
+    // Ignore hover events that originated before the current selection
+    if (onCellHover.eventId && onCellHover.eventId < selectionChangedAtRef.current) {
+      return;
+    }
+    // Prevent applying the same hover event multiple times (across selection changes)
+    if (onCellHover.eventId && lastHoverEventIdRef.current === onCellHover.eventId) {
+      return;
+    }
+    if (onCellHover.eventId) {
+      lastHoverEventIdRef.current = onCellHover.eventId;
+    }
+
     const formattedData = CellDataFormatter.formatCellData(
       onCellHover.data,
       onCellHover.experiment,
@@ -1794,6 +1815,9 @@ const renderLiveCodingControls = (unit) => {
       data-selected-unit-id={selectedUnitId}
       data-selected-unit-type={units.find(u => u.id === selectedUnitId)?.type}
     >
+  {/* Hidden initializer to pre-create isolated strudel-editor instances per LiveCodingUnit */}
+  <LiveCodingInitializer units={units} />
+
       <div className="p-2 flex flex-col gap-2 min-w-[16rem]">
         {/* Units list container with minimum height */}
         <div className="min-h-[100px] flex flex-col gap-2">
