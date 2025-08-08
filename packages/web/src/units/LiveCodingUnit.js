@@ -40,6 +40,17 @@ export class LiveCodingUnit extends BaseUnit {
     console.log(`LiveCodingUnit ${this.id} initialized`);
   }
 
+  // Wait until REPL context is fully ready (context + samples function)
+  async _waitForReplReady(timeoutMs = 2000, intervalMs = 40) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const ctx = this.replInstance?.context;
+      if (ctx && typeof ctx.samples === 'function') return true;
+      await new Promise(r => setTimeout(r, intervalMs));
+    }
+    return !!(this.replInstance?.context);
+  }
+
   async initialize() {
     try {
       console.log(`Initializing LiveCodingUnit ${this.id}`);
@@ -58,12 +69,15 @@ export class LiveCodingUnit extends BaseUnit {
    */
   async setReplInstance(editor, strudelElement = null) {
     console.log(`LiveCodingUnit ${this.id}: setReplInstance called with strudelElement:`, !!strudelElement);
-    // Store the instances
-  // Update references (even if same editor, we might be re-attaching with a new element)
+  // Determine if element changed (reattach)
+  const prevElement = this.strudelElement;
+  const elementChanged = prevElement && strudelElement && prevElement !== strudelElement;
+
+  // Update references
   this.replInstance = editor?.repl;
   this.editorInstance = editor;
   this.strudelElement = strudelElement; // Store reference to strudel-editor for sync/solo
-  this.hasEvaluated = false; // require fresh evaluate before start after (re)attach
+  // Do not blanket-reset hasEvaluated; keep until we explicitly re-evaluate
     
     // Handle any pending samples and code now that REPL is ready
     if (this.replInstance && this.editorInstance) {
@@ -81,10 +95,12 @@ export class LiveCodingUnit extends BaseUnit {
   // Do not auto-stop on attach; respect current playback state
       
       // Register samples on attach if there are pending OR any unregistered in our bank
-      const needsRegistration = this.hasPendingSamples || (this.sampleBank && this.sampleBank.size > 0);
+    const needsRegistration = this.hasPendingSamples || (this.sampleBank && this.sampleBank.size > 0);
       if (needsRegistration) {
         console.log(`LiveCodingUnit ${this.id}: Registering samples on attach`);
         try {
+      // Ensure REPL is actually ready to accept samples()
+      await this._waitForReplReady(1500);
           await this.updateStrudelSampleBank();
           this.hasPendingSamples = false;
         } catch (e) {
@@ -97,6 +113,19 @@ export class LiveCodingUnit extends BaseUnit {
         console.log(`LiveCodingUnit ${this.id}: Setting pending code:`, this.pendingCode);
         this.setCode(this.pendingCode);
         this.pendingCode = null;
+      }
+
+      // If we reattached to a different element and we were playing, rebind UI by re-evaluating + starting
+  if (this.isPlaying) {
+        try {
+          // Small debounce to let editor settle
+          setTimeout(async () => {
+            try { await this.ensureSamplesForCode(this.currentCode); } catch {}
+    try { await this.evaluate(); } catch {}
+    // Do not force start if already playing; evaluate restores highlighting
+    if (elementChanged) { try { this.play(); } catch {} }
+          }, 30);
+        } catch {}
       }
     }
   }

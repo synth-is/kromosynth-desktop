@@ -24,12 +24,12 @@ const UnitStrudelRepl = ({ unitId }) => {
     const localAttachToken = ++attachTokenRef.current;
 
 
-    const ensureEditorReady = (editorEl) => {
+  const ensureEditorReady = (editorEl) => {
       // Wait until the custom element exposes .editor before syncing
       const maxWait = Date.now() + 5000;
       const waitReady = () => {
         if (attachTokenRef.current !== localAttachToken) return;
-        if (editorEl.editor) {
+    if (editorEl.editor && editorEl.editor.repl && editorEl.editor.repl.context) {
           try {
             const unit = window.getUnitInstance?.(unitId);
             const unitCode = unit?.currentCode;
@@ -41,6 +41,8 @@ const UnitStrudelRepl = ({ unitId }) => {
             setCurrentCode(liveCode);
             if (unit && unit.type === 'LIVE_CODING') {
               unit.setReplInstance(editorEl.editor, editorEl);
+        // Reflect current playing state
+        setIsPlaying(!!unit.isPlaying);
             }
           } catch {}
           return; // ready
@@ -55,7 +57,7 @@ const UnitStrudelRepl = ({ unitId }) => {
     const finalizeAttach = (editorEl) => {
       if (!editorEl || attachTokenRef.current !== localAttachToken) return;
       replRef.current = editorEl;
-      // Mount the editor directly into the container (no overlay)
+  // Mount the editor directly into the container (no overlay)
       const container = containerRef.current;
       if (container) {
         // Remove any previous children; we only want our editor
@@ -85,25 +87,20 @@ const UnitStrudelRepl = ({ unitId }) => {
       editorEl.editor.refresh();
     }
   } catch {}
+  // Prevent clicks inside editor from deselecting the unit
+  try {
+    const stop = (e) => { e.stopPropagation(); };
+    ['mousedown','mouseup','click','dblclick','pointerdown','pointerup','keydown'].forEach(evt => {
+      editorEl.addEventListener(evt, stop);
+    });
+  } catch {}
+
   // Ensure editor is ready and synced
       ensureEditorReady(editorEl);
   // Nudge layout for editors that size on resize events
   try { setTimeout(() => window.dispatchEvent(new Event('resize')), 0); } catch {}
 
-      // Sync code source-of-truth
-      try {
-        const unit = window.getUnitInstance?.(unitId);
-        const unitCode = unit?.currentCode;
-        const liveCode = unitCode || editorEl.editor?.code || editorEl.getAttribute('code') || currentCode;
-        if (unitCode && editorEl.editor) {
-          editorEl.editor.setCode(unitCode);
-          try { editorEl.setAttribute('code', unitCode); } catch {}
-        }
-        setCurrentCode(liveCode);
-        if (unit && unit.type === 'LIVE_CODING' && editorEl.editor) {
-          unit.setReplInstance(editorEl.editor, editorEl);
-        }
-      } catch {}
+  // Sync will be handled in ensureEditorReady when REPL context is available
 
   // No observers required
     };
@@ -120,7 +117,7 @@ const UnitStrudelRepl = ({ unitId }) => {
 
       // Overlay is inside the container, CSS keeps it aligned; no rAF or resize needed
 
-    return () => {
+  return () => {
       delete window[`updateUnit${unitId}`];
       clearInterval(poll);
       // Clean any leftover nodes in this container for a fresh start next mount
@@ -147,7 +144,7 @@ const UnitStrudelRepl = ({ unitId }) => {
         });
         try { initializerContainer.appendChild(el); } catch {}
       }
-      replRef.current = null;
+  replRef.current = null;
       initializedRef.current = false;
     };
   }, [unitId]);
