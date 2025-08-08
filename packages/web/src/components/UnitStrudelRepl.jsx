@@ -10,99 +10,142 @@ const UnitStrudelRepl = ({ unitId }) => {
   // Completely independent state - no sharing, no complex sync
   const replRef = useRef(null);
   const containerRef = useRef(null);
+  const attachTokenRef = useRef(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentCode, setCurrentCode] = useState(`// Unit ${unitId}\nsound("bd hh sd oh")`);
   const initializedRef = useRef(false);
 
   console.log(`UnitStrudelRepl: Component rendered for unit ${unitId}`);
 
-  // Initialize or attach to existing hidden REPL for this unit
+  // Initialize and mount the existing hidden REPL directly into our container
   useEffect(() => {
     if (!containerRef.current || initializedRef.current) return;
     initializedRef.current = true;
+    const localAttachToken = ++attachTokenRef.current;
 
-    // Try to locate a hidden editor created by LiveCodingInitializer
-    const hiddenEditor = document.querySelector(`strudel-editor[data-unit-id="${unitId}"]`);
-    if (hiddenEditor) {
-      console.log(`UnitStrudelRepl: Attaching existing hidden REPL for unit ${unitId}`);
-      // Move the existing editor into our visible container
-      containerRef.current.appendChild(hiddenEditor);
-      hiddenEditor.style.display = '';
-      replRef.current = hiddenEditor;
 
-      // Sync local state from the unit’s authoritative current code if available
+    const ensureEditorReady = (editorEl) => {
+      // Wait until the custom element exposes .editor before syncing
+      const maxWait = Date.now() + 5000;
+      const waitReady = () => {
+        if (attachTokenRef.current !== localAttachToken) return;
+        if (editorEl.editor) {
+          try {
+            const unit = window.getUnitInstance?.(unitId);
+            const unitCode = unit?.currentCode;
+            const liveCode = unitCode || editorEl.editor?.code || editorEl.getAttribute('code') || currentCode;
+            if (unitCode && editorEl.editor) {
+              editorEl.editor.setCode(unitCode);
+              try { editorEl.setAttribute('code', unitCode); } catch {}
+            }
+            setCurrentCode(liveCode);
+            if (unit && unit.type === 'LIVE_CODING') {
+              unit.setReplInstance(editorEl.editor, editorEl);
+            }
+          } catch {}
+          return; // ready
+        }
+        if (Date.now() < maxWait) {
+          setTimeout(waitReady, 100);
+        }
+      };
+      waitReady();
+    };
+
+    const finalizeAttach = (editorEl) => {
+      if (!editorEl || attachTokenRef.current !== localAttachToken) return;
+      replRef.current = editorEl;
+      // Mount the editor directly into the container (no overlay)
+      const container = containerRef.current;
+      if (container) {
+        // Remove any previous children; we only want our editor
+        while (container.firstChild) {
+          if (container.firstChild === editorEl) break;
+          container.removeChild(container.firstChild);
+        }
+        if (editorEl.parentNode !== container) {
+          container.appendChild(editorEl);
+        }
+      }
+
+  // Ensure it’s visible
+  // Control visibility via overlay; make sure editor can measure
+  editorEl.style.position = '';
+  editorEl.style.left = '';
+  editorEl.style.top = '';
+  editorEl.style.width = '100%';
+  editorEl.style.height = '100%';
+  editorEl.style.visibility = 'visible';
+
+  // Ensure editor element is visible (avoid display:none while visible)
+  editorEl.style.display = 'block';
+  // Force refresh for CodeMirror-like editors when transitioning from hidden/offscreen
+  try {
+    if (editorEl.editor && typeof editorEl.editor.refresh === 'function') {
+      editorEl.editor.refresh();
+    }
+  } catch {}
+  // Ensure editor is ready and synced
+      ensureEditorReady(editorEl);
+  // Nudge layout for editors that size on resize events
+  try { setTimeout(() => window.dispatchEvent(new Event('resize')), 0); } catch {}
+
+      // Sync code source-of-truth
       try {
         const unit = window.getUnitInstance?.(unitId);
         const unitCode = unit?.currentCode;
-        const liveCode = unitCode || hiddenEditor.editor?.code || hiddenEditor.getAttribute('code') || currentCode;
-        if (unitCode && hiddenEditor.editor) {
-          hiddenEditor.editor.setCode(unitCode);
-          try { hiddenEditor.setAttribute('code', unitCode); } catch {}
+        const liveCode = unitCode || editorEl.editor?.code || editorEl.getAttribute('code') || currentCode;
+        if (unitCode && editorEl.editor) {
+          editorEl.editor.setCode(unitCode);
+          try { editorEl.setAttribute('code', unitCode); } catch {}
         }
         setCurrentCode(liveCode);
+        if (unit && unit.type === 'LIVE_CODING' && editorEl.editor) {
+          unit.setReplInstance(editorEl.editor, editorEl);
+        }
       } catch {}
 
-      // Ensure unit linkage is established
-      const unit = window.getUnitInstance?.(unitId);
-      if (unit && unit.type === 'LIVE_CODING' && hiddenEditor.editor) {
-        unit.setReplInstance(hiddenEditor.editor, hiddenEditor);
-      }
+  // No observers required
+    };
 
-      // Register unit-specific updater
-      window[`updateUnit${unitId}`] = (newCode) => {
-        if (replRef.current?.editor) {
-          replRef.current.editor.setCode(newCode);
-          try { replRef.current.setAttribute('code', newCode); } catch {}
-          setCurrentCode(newCode);
-        }
-      };
-      return () => {
-        // On unmount, don't destroy the editor; move it back to the hidden container if available
-        delete window[`updateUnit${unitId}`];
-        const initializerContainer = document.querySelector('[data-testid="live-coding-initializer"]');
-        if (initializerContainer && replRef.current) {
-          replRef.current.style.display = 'none';
-          initializerContainer.appendChild(replRef.current);
-        }
-        replRef.current = null;
-        initializedRef.current = false;
-      };
-    }
-
-    // Fallback removed: wait briefly for initializer to create the editor to avoid duplicates
-    console.log(`UnitStrudelRepl: No hidden REPL found yet for unit ${unitId}, waiting for initializer...`);
-    const waitUntil = Date.now() + 3000; // up to 3s
+    // Poll for the editor created by the initializer, then attach via overlay
+    const waitUntil = Date.now() + 8000; // up to 8s
     const poll = setInterval(() => {
       const found = document.querySelector(`strudel-editor[data-unit-id="${unitId}"]`);
       if (found || Date.now() > waitUntil) {
         clearInterval(poll);
-        if (found && containerRef.current && !replRef.current) {
-          containerRef.current.appendChild(found);
-          found.style.display = '';
-          replRef.current = found;
-          const unit = window.getUnitInstance?.(unitId);
-          if (unit && unit.type === 'LIVE_CODING' && found.editor) {
-            unit.setReplInstance(found.editor, found);
-          }
-          window[`updateUnit${unitId}`] = (newCode) => {
-            if (replRef.current?.editor) {
-              replRef.current.editor.setCode(newCode);
-              try { replRef.current.setAttribute('code', newCode); } catch {}
-              setCurrentCode(newCode);
-            }
-          };
-        }
+        finalizeAttach(found || null);
       }
     }, 100);
+
+      // Overlay is inside the container, CSS keeps it aligned; no rAF or resize needed
 
     return () => {
       delete window[`updateUnit${unitId}`];
       clearInterval(poll);
-      // Move back to initializer if present
+      // Clean any leftover nodes in this container for a fresh start next mount
+      try {
+        const container = containerRef.current;
+        if (container) {
+          while (container.firstChild) {
+            try { container.removeChild(container.firstChild); } catch {}
+          }
+        }
+      } catch {}
+      // Park editor element back to the initializer (hidden but measurable)
       const initializerContainer = document.querySelector('[data-testid="live-coding-initializer"]');
-      if (initializerContainer && replRef.current) {
-        replRef.current.style.display = 'none';
-        initializerContainer.appendChild(replRef.current);
+      if (replRef.current && initializerContainer) {
+        const el = replRef.current;
+        Object.assign(el.style, {
+          position: 'absolute',
+          left: '-20000px',
+          top: '0px',
+          width: '800px',
+          height: '600px',
+          visibility: 'hidden',
+          display: ''
+        });
+        try { initializerContainer.appendChild(el); } catch {}
       }
       replRef.current = null;
       initializedRef.current = false;
@@ -112,76 +155,76 @@ const UnitStrudelRepl = ({ unitId }) => {
   // Simple controls
   const handlePlay = (e) => {
     e?.stopPropagation(); // Prevent unit deselection
+    const unit = window.getUnitInstance?.(unitId);
+    if (unit && unit.type === 'LIVE_CODING') {
+  console.log(`UnitStrudelRepl: Play via LiveCodingUnit ${unitId}`);
+  try { unit.play(); } catch {}
+  setIsPlaying(true);
+  setCurrentCode(unit.currentCode);
+  return;
+    }
     if (replRef.current?.editor?.repl) {
-      console.log(`UnitStrudelRepl: Playing unit ${unitId}`);
-      replRef.current.editor.repl.stop(); // Stop first
-      setTimeout(() => {
-        const code = replRef.current.editor.code;
-        replRef.current.editor.repl.evaluate(code);
-        setIsPlaying(true);
-        setCurrentCode(code);
-      }, 50);
+      console.log(`UnitStrudelRepl: Playing unit ${unitId} (fallback)`);
+      try { replRef.current.editor.repl.stop(); } catch {}
+      const code = replRef.current.editor.code;
+      replRef.current.editor.repl.evaluate(code);
+      setIsPlaying(true);
+      setCurrentCode(code);
     }
   };
 
   const handleStop = (e) => {
     e?.stopPropagation(); // Prevent unit deselection
+    const unit = window.getUnitInstance?.(unitId);
+    if (unit && unit.type === 'LIVE_CODING') {
+      console.log(`UnitStrudelRepl: Stopping via LiveCodingUnit ${unitId}`);
+  try { unit.stop(); } catch {}
+      setIsPlaying(false);
+      return;
+    }
     if (replRef.current?.editor?.repl) {
-      console.log(`UnitStrudelRepl: Stopping unit ${unitId}`);
-      replRef.current.editor.repl.stop();
+      console.log(`UnitStrudelRepl: Stopping unit ${unitId} (fallback)`);
+      try { replRef.current.editor.repl.stop(); } catch {}
       setIsPlaying(false);
     }
   };
 
   const handleToggle = (e) => {
     e?.stopPropagation(); // Prevent unit deselection
-    if (isPlaying) {
-      handleStop(e);
-    } else {
-      handlePlay(e);
+    const unit = window.getUnitInstance?.(unitId);
+    if (unit && unit.type === 'LIVE_CODING') {
+      unit.toggle();
+      setIsPlaying(unit.isPlaying);
+      return;
     }
+    if (isPlaying) handleStop(e); else handlePlay(e);
   };
 
   // Simple method to update code from hover (called directly, no complex bridging)
   const updateCode = (newCode) => {
     console.log(`UnitStrudelRepl: Updating code for unit ${unitId}:`, newCode);
+    const unit = window.getUnitInstance?.(unitId);
+    if (unit && unit.type === 'LIVE_CODING') {
+      try { unit.stop(); } catch {}
+      try { unit.setCode(newCode); } catch {}
+      setCurrentCode(newCode);
+      // Auto-play via unit logic (which evaluates-before-start)
+      setTimeout(() => { try { unit.play(); setIsPlaying(true); } catch {} }, 50);
+      return;
+    }
     if (replRef.current?.editor) {
-      // Stop current pattern
-      if (replRef.current.editor.repl) {
-        replRef.current.editor.repl.stop();
-        setIsPlaying(false);
-      }
-      
-      // Set new code
+      try { replRef.current.editor.repl?.stop(); } catch {}
       replRef.current.editor.setCode(newCode);
       setCurrentCode(newCode);
-      
-      // Auto-play the new pattern
-      setTimeout(() => {
-        if (replRef.current?.editor?.repl) {
-          replRef.current.editor.repl.evaluate(newCode);
-          setIsPlaying(true);
-        }
-      }, 100);
+      setTimeout(() => { try { replRef.current?.editor?.repl?.evaluate(newCode); setIsPlaying(true); } catch {} }, 100);
     }
   };
 
   // ALWAYS ensure global method is available (robust registration)
   useEffect(() => {
-    console.log(`UnitStrudelRepl: Ensuring updateUnit${unitId} is always available`);
-    // Always register/re-register to ensure method is available
+    // Register unit-specific updater once per mount
     window[`updateUnit${unitId}`] = updateCode;
-    
-    // Verify registration immediately
-    const isRegistered = `updateUnit${unitId}` in window;
-    console.log(`UnitStrudelRepl: Verified registration for unit ${unitId}:`, isRegistered);
-    
-    if (!isRegistered) {
-      console.error(`UnitStrudelRepl: FAILED to register updateUnit${unitId}!`);
-    }
-    
     return () => {
-      console.log(`UnitStrudelRepl: Cleaning up updateUnit${unitId}`);
       delete window[`updateUnit${unitId}`];
     };
   }, [unitId, updateCode]);
@@ -219,9 +262,9 @@ const UnitStrudelRepl = ({ unitId }) => {
         <span className="text-xs text-gray-500 ml-2">{isPlaying ? '🔊' : '🔇'}</span>
       </div>
 
-      <div 
-        ref={containerRef} 
-        className="border border-gray-600 rounded bg-gray-900 min-h-[300px]"
+      <div
+        ref={containerRef}
+        className="border border-gray-600 rounded bg-gray-900 min-h-[300px] relative overflow-hidden"
       />
     </div>
   );

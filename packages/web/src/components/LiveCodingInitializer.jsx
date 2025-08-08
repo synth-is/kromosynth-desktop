@@ -25,16 +25,30 @@ const LiveCodingInitializer = ({ units }) => {
         console.log(`LiveCodingInitializer: Creating REPL for unit ${unit.id}`);
         
         // Create editor exactly like StrudelReplTest.jsx
-  const editor = document.createElement('strudel-editor');
+        // Guard against duplicates: reuse existing if present
+        let editor = document.querySelector(`strudel-editor[data-unit-id="${unit.id}"]`);
+        if (!editor) {
+          editor = document.createElement('strudel-editor');
+        }
         editor.setAttribute('code', unit.strudelCode || '// Waiting for evolutionary sounds...');
         editor.sync = unit.sync !== undefined ? unit.sync : true;
         editor.solo = unit.solo !== undefined ? unit.solo : false;
         
-        // Hide the editor but keep it functional
-        editor.style.display = 'none';
+        // Park the editor off-screen but keep it functional so it can measure/layout
+        Object.assign(editor.style, {
+          position: 'absolute',
+          left: '-20000px',
+          top: '0px',
+          width: '800px',
+          height: '600px',
+          visibility: 'hidden'
+        });
         editor.setAttribute('data-unit-id', unit.id);
+        editor.setAttribute('id', `strudel-editor-${unit.id}`);
         
-        containerRef.current.appendChild(editor);
+        if (editor.parentNode !== containerRef.current) {
+          containerRef.current.appendChild(editor);
+        }
         replsRef.current.set(unit.id, editor);
         
         // Wait for REPL to be ready and connect to unit instance
@@ -48,6 +62,14 @@ const LiveCodingInitializer = ({ units }) => {
         // Pass both the editor instance and the strudel-editor element (for sync/solo updates)
         unitInstance.setReplInstance(editor.editor, editor);
               console.log(`LiveCodingInitializer: Connected REPL to unit ${unit.id}`);
+
+              // Nudge UI to re-render so panels reflect readiness immediately
+              try {
+                const updateEvent = new CustomEvent('updateUnitConfig', {
+                  detail: { unitId: unit.id, config: { __replReadyPing: Date.now() }, source: 'LiveCodingInitializer' }
+                });
+                document.dispatchEvent(updateEvent);
+              } catch {}
             }
           } else {
             setTimeout(checkReady, 100);
@@ -106,7 +128,16 @@ const LiveCodingInitializer = ({ units }) => {
   return (
     <div
       ref={containerRef}
-      style={{ display: 'none' }}
+      style={{
+        position: 'fixed',
+        left: 0,
+        top: 0,
+        width: 0,
+        height: 0,
+        overflow: 'visible',
+        pointerEvents: 'none',
+        zIndex: 2147483647 // ensure overlays appear above panel
+      }}
       data-testid="live-coding-initializer"
     />
   );
