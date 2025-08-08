@@ -15,6 +15,7 @@ export class LiveCodingUnit extends BaseUnit {
     this.sampleCounter = 0; // For generating unique sample names
     this.pendingSamples = {}; // Unit-specific pending samples (avoid global pollution)
     this.hasPendingSamples = false;
+    this.pendingCode = null; // Store code updates when REPL is not ready
     
     // Code generation settings
     this.autoGenerateCode = true;
@@ -53,11 +54,31 @@ export class LiveCodingUnit extends BaseUnit {
   /**
    * Simple connection - no complex bridging needed
    */
-  async setReplInstance(editor, onCodeChangeCallback = null) {
-    console.log(`LiveCodingUnit ${this.id}: setReplInstance called (simplified)`);
-    // Just store for compatibility - the global method handles updates
+  async setReplInstance(editor, strudelElement = null) {
+    console.log(`LiveCodingUnit ${this.id}: setReplInstance called with strudelElement:`, !!strudelElement);
+    // Store the instances
     this.replInstance = editor?.repl;
     this.editorInstance = editor;
+    this.strudelElement = strudelElement; // Store reference to strudel-editor for sync/solo
+    
+    // Handle any pending samples and code now that REPL is ready
+    if (this.replInstance && this.editorInstance) {
+      console.log(`LiveCodingUnit ${this.id}: REPL ready - processing pending items`);
+      
+      // Apply pending samples if any
+      if (this.hasPendingSamples) {
+        console.log(`LiveCodingUnit ${this.id}: Registering pending samples`);
+        await this.updateStrudelSampleBank();
+        this.hasPendingSamples = false;
+      }
+      
+      // Apply pending code if any
+      if (this.pendingCode) {
+        console.log(`LiveCodingUnit ${this.id}: Setting pending code:`, this.pendingCode);
+        this.setCode(this.pendingCode);
+        this.pendingCode = null;
+      }
+    }
   }
 
   /**
@@ -79,8 +100,8 @@ export class LiveCodingUnit extends BaseUnit {
       throw new Error('Missing genomeId in cellData');
     }
 
-    // Create a unique sample name
-    const sampleName = `evo_${this.sampleCounter++}`;
+    // Create a unique sample name with unit ID to ensure no conflicts
+    const sampleName = `unit${this.id}_evo_${this.sampleCounter++}`;
     
     // Default render parameters
     const finalRenderParams = {
@@ -570,7 +591,7 @@ export class LiveCodingUnit extends BaseUnit {
       
       // Add to sample bank with fake genome ID
       const testGenomeId = 'test_tone_' + Date.now();
-      const sampleName = `test_${this.sampleCounter++}`;
+      const sampleName = `unit${this.id}_test_${this.sampleCounter++}`;
       
       this.sampleBank.set(testGenomeId, {
         name: sampleName,
@@ -626,10 +647,13 @@ export class LiveCodingUnit extends BaseUnit {
       try {
         console.log(`LiveCodingUnit ${this.id}: Registering samples to unit's own REPL context...`);
 
-        // Method 1: Use THIS unit's REPL context samples function
+        // Create a unit-specific sample namespace to avoid conflicts
+        const unitSampleNamespace = `unit_${this.id}_samples`;
+        
+        // Method 1: Use THIS unit's REPL context samples function with namespace
         if (this.replInstance.context.samples) {
-          await this.replInstance.context.samples(sampleMap);
-          console.log(`✅ LiveCodingUnit ${this.id}: Samples registered via repl.context.samples()`);
+          await this.replInstance.context.samples(sampleMap, unitSampleNamespace);
+          console.log(`✅ LiveCodingUnit ${this.id}: Samples registered via repl.context.samples() with namespace ${unitSampleNamespace}`);
           
           // Verify registration by checking context
           const contextSamples = this.replInstance.context.sampleMaps || this.replInstance.context._samples || {};
@@ -638,32 +662,36 @@ export class LiveCodingUnit extends BaseUnit {
           return true;
         }
 
-        // Method 2: Direct assignment to context (unit-specific)
-        if (!this.replInstance.context.sampleMaps) {
-          this.replInstance.context.sampleMaps = {};
+        // Method 2: Create isolated sample context for this unit only
+        if (!this.replInstance.context[`unit_${this.id}_sampleMaps`]) {
+          this.replInstance.context[`unit_${this.id}_sampleMaps`] = {};
         }
-        Object.assign(this.replInstance.context.sampleMaps, sampleMap);
-        console.log(`✅ LiveCodingUnit ${this.id}: Samples registered in unit's context.sampleMaps`);
+        Object.assign(this.replInstance.context[`unit_${this.id}_sampleMaps`], sampleMap);
+        console.log(`✅ LiveCodingUnit ${this.id}: Samples registered in isolated unit context`);
 
-        // Method 3: Direct assignment to _samples (unit-specific)
-        if (!this.replInstance.context._samples) {
-          this.replInstance.context._samples = {};
-        }
-        Object.assign(this.replInstance.context._samples, sampleMap);
-        console.log(`✅ LiveCodingUnit ${this.id}: Samples registered in unit's context._samples`);
-
-        // Test if blob URLs are actually playable
-        console.log(`🧪 LiveCodingUnit ${this.id}: Testing blob URL playability...`);
-        Object.entries(sampleMap).forEach(([name, blobUrl]) => {
-          const audio = new Audio(blobUrl);
-          audio.addEventListener('loadeddata', () => {
-            console.log(`✅ Audio ${name} loaded successfully (duration: ${audio.duration}s)`);
-          });
-          audio.addEventListener('error', (err) => {
-            console.error(`❌ Audio ${name} loading failed:`, err);
-          });
-          audio.load();
-        });
+        // Method 3: Override the samples function for this REPL instance only
+        const originalSamples = this.replInstance.context.samples;
+        this.replInstance.context.samples = async (additionalSamples = {}, namespace = '') => {
+          // Combine this unit's samples with any additional samples
+          const combinedSamples = { ...sampleMap, ...additionalSamples };
+          console.log(`LiveCodingUnit ${this.id}: Custom samples function called with:`, Object.keys(combinedSamples));
+          
+          // Call original function if available, otherwise store directly
+          if (originalSamples && typeof originalSamples === 'function') {
+            return await originalSamples.call(this.replInstance.context, combinedSamples, namespace);
+          } else {
+            // Direct storage fallback
+            if (!this.replInstance.context._samples) {
+              this.replInstance.context._samples = {};
+            }
+            Object.assign(this.replInstance.context._samples, combinedSamples);
+            return true;
+          }
+        };
+        
+        // Initialize with current samples
+        await this.replInstance.context.samples();
+        console.log(`✅ LiveCodingUnit ${this.id}: Custom samples function installed and initialized`);
 
         return true;
 
@@ -734,20 +762,50 @@ export class LiveCodingUnit extends BaseUnit {
   }
 
   /**
-   * Manually set the Strudel code (super simple approach)
+   * Manually set the Strudel code (isolated unit-specific approach)
    * @param {string} code - Strudel code to set
    */
   setCode(code) {
     console.log(`LiveCodingUnit ${this.id}: setCode called with:`, code);
     this.currentCode = code;
     
-    // Use the simple global method to update the REPL
+    // CRITICAL: Persist code to unit config so it survives unit switching
+    // Find the unit in the UnitsPanel and update its strudelCode
+    try {
+      // Try to update the unit config through the DOM
+      const unitElement = document.querySelector(`[data-unit-id="${this.id}"]`);
+      if (unitElement) {
+        // Trigger a custom event to update the unit config
+        const updateEvent = new CustomEvent('updateUnitConfig', {
+          detail: { 
+            unitId: this.id, 
+            config: { strudelCode: code },
+            source: 'LiveCodingUnit.setCode'
+          }
+        });
+        document.dispatchEvent(updateEvent);
+        console.log(`LiveCodingUnit ${this.id}: Dispatched config update event for code persistence`);
+      }
+    } catch (error) {
+      console.warn(`LiveCodingUnit ${this.id}: Could not dispatch config update:`, error);
+    }
+    
+    // First priority: Use direct REPL instance if available
+    if (this.editorInstance) {
+      console.log(`LiveCodingUnit ${this.id}: Updating REPL via direct editor instance`);
+      this.editorInstance.setCode(code);
+      return;
+    }
+    
+    // Second priority: Use the unit-specific global method
     const updateMethod = window[`updateUnit${this.id}`];
     if (updateMethod) {
-      console.log(`LiveCodingUnit ${this.id}: Updating REPL via global method`);
+      console.log(`LiveCodingUnit ${this.id}: Updating REPL via unit-specific global method`);
       updateMethod(code);
     } else {
-      console.log(`LiveCodingUnit ${this.id}: Global update method not available yet`);
+      console.log(`LiveCodingUnit ${this.id}: No update method available - storing code for later`);
+      // Store code for when the REPL becomes available
+      this.pendingCode = code;
     }
   }
 
@@ -763,6 +821,13 @@ export class LiveCodingUnit extends BaseUnit {
     // Check if unit is ready to receive sounds
     if (!this.isReadyForSounds()) {
       console.log(`LiveCodingUnit ${this.id}: Not ready for sounds - no REPL instance available`);
+      return;
+    }
+    
+    // ISOLATION FIX: Prevent cross-contamination by checking if this is the selected unit
+    const selectedUnitId = window.debugGetSelectedUnitId?.();
+    if (selectedUnitId && selectedUnitId !== this.id) {
+      console.log(`LiveCodingUnit ${this.id}: Ignoring hover - not the selected unit (selected: ${selectedUnitId})`);
       return;
     }
 
@@ -951,24 +1016,45 @@ export class LiveCodingUnit extends BaseUnit {
    * Update unit configuration
    */
   updateConfig(config) {
+    console.log(`LiveCodingUnit ${this.id}: updateConfig called with:`, config);
+    
     Object.assign(this, config);
     
     // Update REPL instance if available
-    if (this.editorInstance) {
+    if (this.strudelElement) {
+      // Use the stored strudel-editor element reference
       if (config.sync !== undefined) {
-        this.editorInstance.sync = config.sync;
+        this.strudelElement.sync = config.sync;
+        console.log(`LiveCodingUnit ${this.id}: Updated REPL sync to:`, config.sync);
       }
       if (config.solo !== undefined) {
-        this.editorInstance.solo = config.solo;
+        this.strudelElement.solo = config.solo;
+        console.log(`LiveCodingUnit ${this.id}: Updated REPL solo to:`, config.solo);
+        
+        // CRITICAL: If this unit is being soloed, make sure other units are not soloed
+        if (config.solo === true) {
+          console.log(`LiveCodingUnit ${this.id}: Soloing - will disable solo on other units`);
+          // Dispatch event to unsolo other units
+          document.dispatchEvent(new CustomEvent('soloLiveCodingUnit', {
+            detail: { unitId: this.id }
+          }));
+        }
       }
+    } else {
+      console.warn(`LiveCodingUnit ${this.id}: No strudel element reference for sync/solo update`);
     }
     
-    // Update current code if strudelCode is provided
+    // CRITICAL: Update current code if strudelCode is provided AND different
+    // This is essential for maintaining code when switching between units
     if (config.strudelCode !== undefined && config.strudelCode !== this.currentCode) {
+      console.log(`LiveCodingUnit ${this.id}: Updating code from config:`, config.strudelCode);
       this.setCode(config.strudelCode);
+    } else if (config.strudelCode === undefined && this.currentCode !== this.basePattern) {
+      // If no strudelCode in config but unit has custom code, preserve it
+      console.log(`LiveCodingUnit ${this.id}: Preserving existing code:`, this.currentCode);
     }
     
-    console.log(`LiveCodingUnit ${this.id}: Config updated`, config);
+    console.log(`LiveCodingUnit ${this.id}: Config updated, current code:`, this.currentCode);
   }
 
   /**
@@ -1020,6 +1106,27 @@ export class LiveCodingUnit extends BaseUnit {
   }
 
   /**
+   * Debug method to check unit isolation
+   * @returns {Object} - Debug information about this unit's state
+   */
+  getIsolationDebugInfo() {
+    return {
+      unitId: this.id,
+      hasReplInstance: !!this.replInstance,
+      hasEditorInstance: !!this.editorInstance,
+      sampleBankSize: this.sampleBank.size,
+      sampleNames: Array.from(this.sampleBank.values()).map(s => s.name),
+      currentCode: this.currentCode,
+      hasPendingSamples: this.hasPendingSamples,
+      hasPendingCode: !!this.pendingCode,
+      isReadyForSounds: this.isReadyForSounds(),
+      isPlaying: this.isPlaying,
+      contextSamples: this.replInstance?.context ? Object.keys(this.replInstance.context._samples || {}) : [],
+      globalUpdateMethod: `updateUnit${this.id}` in window
+    };
+  }
+
+  /**
    * Cleanup resources
    */
   cleanup() {
@@ -1036,6 +1143,14 @@ export class LiveCodingUnit extends BaseUnit {
     this.editorInstance = null;
     this.uiReplInstance = null;
     this.uiEditorInstance = null;
+    
+    // Clear pending items
+    this.pendingSamples = {};
+    this.hasPendingSamples = false;
+    this.pendingCode = null;
+    
+    // Clean up global update method
+    delete window[`updateUnit${this.id}`];
     
     // Call parent cleanup
     super.cleanup();

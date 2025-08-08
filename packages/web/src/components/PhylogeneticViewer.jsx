@@ -141,7 +141,7 @@ const PhylogeneticViewer = ({
     
     console.log('Double-click on node:', nodeData.id);
     
-    // Check if a LiveCodingUnit is selected
+    // Check if ANY LiveCodingUnit is selected (not just the most recent one)
     const selectedUnitElement = document.querySelector('[data-selected-unit-type="LIVE_CODING"]');
     const selectedUnitId = selectedUnitElement?.getAttribute('data-selected-unit-id');
     
@@ -149,9 +149,9 @@ const PhylogeneticViewer = ({
       const liveCodingUnit = window.getUnitInstance(selectedUnitId);
       
       if (liveCodingUnit && liveCodingUnit.type === 'LIVE_CODING') {
-        console.log('Adding sound to LiveCodingUnit:', selectedUnitId);
+        console.log(`Double-click: Adding sound to SPECIFIC LiveCodingUnit: ${selectedUnitId}`);
         
-        // Create cell data for the LiveCodingUnit
+        // Create cell data for the specific LiveCodingUnit
         const cellData = {
           genomeId: nodeData.id,
           experiment: experiment || 'unknown',
@@ -161,32 +161,46 @@ const PhylogeneticViewer = ({
           pitch: nodeData.noteDelta || 0,
           velocity: nodeData.velocity || 0.8,
           // If we have the genome URL, include it
-          genomeUrl: nodeData.genomeUrl
+          genomeUrl: nodeData.genomeUrl,
+          // Add unit targeting information
+          targetUnitId: selectedUnitId
         };
         
-        // Add sound to the live coding unit's sample bank
+        // Add sound to the specific live coding unit's sample bank
         liveCodingUnit.addSoundToBank(cellData).then(result => {
           if (result.strudelRegistered) {
-            console.log('Sound successfully added and registered:', result.sampleName);
+            console.log(`Sound successfully added to Unit ${selectedUnitId}:`, result.sampleName);
           } else {
-            console.log('Sound added to bank, awaiting Strudel registration:', result.sampleName);
-            // Show a notification that the user needs to open the Live Code tab
+            console.log(`Sound added to Unit ${selectedUnitId} bank, awaiting Strudel registration:`, result.sampleName);
+            // Show a unit-specific notification
             const notification = document.createElement('div');
             notification.innerHTML = `
               <div class="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-yellow-600 text-white px-4 py-2 rounded shadow-lg z-50">
-                Sound added! Open the Live Code tab to complete setup.
+                Sound added to Unit ${selectedUnitId}! Open its Live Code tab to complete setup.
               </div>
             `;
             document.body.appendChild(notification);
             setTimeout(() => notification.remove(), 3000);
           }
         }).catch(error => {
-          console.error('Failed to add sound to LiveCodingUnit:', error);
+          console.error(`Failed to add sound to LiveCodingUnit ${selectedUnitId}:`, error);
         });
       }
-    } else if (onCellHover) {
+    } else {
+      // If no LiveCodingUnit is selected, show a helpful message
+      const notification = document.createElement('div');
+      notification.innerHTML = `
+        <div class="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded shadow-lg z-50">
+          Select a LiveCoding unit first, then double-click sounds to add them.
+        </div>
+      `;
+      document.body.appendChild(notification);
+      setTimeout(() => notification.remove(), 2000);
+      
       // Fallback: use the download functionality
-      downloadNodeSound(nodeData);
+      if (onCellHover) {
+        downloadNodeSound(nodeData);
+      }
     }
   }, [experiment, evoRunId, hasAudioInteraction, downloadNodeSound]);
 

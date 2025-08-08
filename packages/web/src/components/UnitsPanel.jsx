@@ -121,7 +121,7 @@ export default function UnitsPanel({
   onUpdateUnit 
 }) {
   const [showTypeSelector, setShowTypeSelector] = useState(false);
-  const { handleCellHover, updateUnitConfig, unitsRef: contextUnitsRef } = useUnits();
+  const { updateUnitConfig, unitsRef: contextUnitsRef } = useUnits();
   const unitsRef = useRef(new Map());
 
   // Handle unit config updates
@@ -284,11 +284,90 @@ export default function UnitsPanel({
     // Expose getUnitInstance function on window for debugging
     window.getUnitInstance = (unitId) => unitsRef.current.get(unitId);
     
+    // Add global function to debug LiveCodingUnit isolation
+    // Helper function to get selected unit ID for isolation
+    window.debugGetSelectedUnitId = () => {
+      return selectedUnitId;
+    };
+    
+    window.debugLiveCodingIsolation = () => {
+      const liveCodingUnits = [];
+      unitsRef.current.forEach((unitInstance, unitId) => {
+        if (unitInstance.type === UNIT_TYPES.LIVE_CODING) {
+          liveCodingUnits.push({
+            unitId,
+            debugInfo: unitInstance.getIsolationDebugInfo()
+          });
+        }
+      });
+      
+      console.group('🔍 LiveCoding Unit Isolation Debug');
+      console.log('Total LiveCoding units:', liveCodingUnits.length);
+      liveCodingUnits.forEach(({ unitId, debugInfo }) => {
+        console.group(`Unit ${unitId}`);
+        console.table(debugInfo);
+        console.groupEnd();
+      });
+      
+      // Check for cross-contamination
+      const allSampleNames = liveCodingUnits.flatMap(unit => unit.debugInfo.sampleNames);
+      const uniqueSampleNames = [...new Set(allSampleNames)];
+      if (allSampleNames.length !== uniqueSampleNames.length) {
+        console.warn('⚠️ Potential sample name conflicts detected!');
+        console.log('All samples:', allSampleNames);
+        console.log('Unique samples:', uniqueSampleNames);
+      } else {
+        console.log('✅ No sample name conflicts detected');
+      }
+      
+      console.groupEnd();
+      return liveCodingUnits;
+    };
+    
+    // Add event listener for unit config updates from LiveCodingUnits
+    const handleUnitConfigUpdate = (event) => {
+      const { unitId, config, source } = event.detail;
+      console.log(`UnitsPanel: Received config update from ${source} for unit ${unitId}:`, config);
+      
+      // Find the unit and update it
+      const currentUnit = units.find(u => u.id === unitId);
+      if (currentUnit && onUpdateUnit) {
+        const updatedUnit = { ...currentUnit, ...config };
+        console.log(`UnitsPanel: Updating unit ${unitId} config:`, updatedUnit);
+        onUpdateUnit(unitId, updatedUnit);
+      } else {
+        console.warn(`UnitsPanel: Could not find unit ${unitId} for config update`);
+      }
+    };
+    
+    document.addEventListener('updateUnitConfig', handleUnitConfigUpdate);
+    
+    // Add event listener for solo events to ensure only one unit is soloed at a time
+    const handleSoloEvent = (event) => {
+      const { unitId: soloedUnitId } = event.detail;
+      console.log(`UnitsPanel: Unit ${soloedUnitId} is being soloed, unsoloing others`);
+      
+      // Find all LiveCoding units and unsolo them except the one being soloed
+      units.forEach(unit => {
+        if (unit.type === UNIT_TYPES.LIVE_CODING && unit.id !== soloedUnitId && unit.solo) {
+          console.log(`UnitsPanel: Unsoloing unit ${unit.id}`);
+          const updatedUnit = { ...unit, solo: false };
+          onUpdateUnit(unit.id, updatedUnit);
+        }
+      });
+    };
+    
+    document.addEventListener('soloLiveCodingUnit', handleSoloEvent);
+    
     return () => {
       // Clean up when component unmounts
       delete window.getUnitInstance;
+      delete window.debugLiveCodingIsolation;
+      delete window.debugGetSelectedUnitId;
+      document.removeEventListener('updateUnitConfig', handleUnitConfigUpdate);
+      document.removeEventListener('soloLiveCodingUnit', handleSoloEvent);
     };
-  }, []);
+  }, [units, onUpdateUnit]);
 
   // Keep only ONE hover handler - This is the only useEffect we need for hover events
   useEffect(() => {
@@ -310,10 +389,8 @@ export default function UnitsPanel({
       const unit = unitsRef.current.get(selectedUnitId);
       if (!unit) return;
 
-      // Also call the context handler
-      if (handleCellHover) {
-        handleCellHover(formattedData);
-      }
+      // REMOVED: Don't call global context handler - it breaks unit isolation
+      // The unit-specific handlers below provide proper isolation
 
       if (unit.type === UNIT_TYPES.TRAJECTORY) {
         unit.handleCellHover(formattedData);
@@ -331,7 +408,7 @@ export default function UnitsPanel({
         unit.handleCellHover(formattedData);
       }
     }
-  }, [selectedUnitId, onCellHover, handleCellHover]);
+  }, [selectedUnitId, onCellHover]);
 
   // ...existing code...
 

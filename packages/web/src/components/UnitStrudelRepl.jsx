@@ -24,7 +24,9 @@ const UnitStrudelRepl = ({ unitId }) => {
       
       const repl = document.createElement('strudel-editor');
       repl.setAttribute('code', currentCode);
-      repl.sync = true;
+      // CRITICAL: Each unit should have isolated sync/solo settings
+      // Default: sync=false for isolation, solo=false for allowing multiple units
+      repl.sync = false; // Changed from true to prevent global sync interference
       repl.solo = false;
       
       containerRef.current.appendChild(repl);
@@ -41,23 +43,43 @@ const UnitStrudelRepl = ({ unitId }) => {
           // Notify the LiveCodingUnit that the REPL is ready
           const unit = window.getUnitInstance?.(unitId);
           if (unit && unit.type === 'LIVE_CODING') {
-            console.log(`UnitStrudelRepl: Setting up LiveCodingUnit ${unitId} instances`);
-            unit.replInstance = repl.editor.repl;
-            unit.editorInstance = repl.editor;
-            console.log(`UnitStrudelRepl: LiveCodingUnit ${unitId} is now ready for sounds`);
+            console.log(`UnitStrudelRepl: Setting up ISOLATED LiveCodingUnit ${unitId} instances`);
+            
+            // Apply unit-specific sync/solo settings
+            if (unit.sync !== undefined) {
+              repl.sync = unit.sync;
+              console.log(`UnitStrudelRepl: Applied sync setting for unit ${unitId}:`, unit.sync);
+            }
+            if (unit.solo !== undefined) {
+              repl.solo = unit.solo;
+              console.log(`UnitStrudelRepl: Applied solo setting for unit ${unitId}:`, unit.solo);
+            }
+            
+            // Use the enhanced setReplInstance method that handles pending items
+            // Store reference to the strudel-editor element for sync/solo updates
+            unit.setReplInstance(repl.editor, repl);
+            
+            console.log(`UnitStrudelRepl: LiveCodingUnit ${unitId} is now ready and isolated with sync=${repl.sync}, solo=${repl.solo}`);
           } else {
             console.log(`UnitStrudelRepl: Could not find LiveCodingUnit ${unitId}`, unit?.type);
           }
           
-          // Register global method for external code updates (hover interactions)
-          window[`updateUnit${unitId}`] = (newCode) => {
-            console.log(`UnitStrudelRepl: External code update for unit ${unitId}:`, newCode);
-            if (replRef.current?.editor) {
+          // Register UNIT-SPECIFIC global method for external code updates (hover interactions)
+          const primaryUpdateMethod = (newCode) => {
+            console.log(`UnitStrudelRepl: PRIMARY external code update for UNIT ${unitId} ONLY:`, newCode);
+            
+            // Double-check we're updating the right unit's REPL
+            if (replRef.current?.editor && replRef.current === repl) {
+              console.log(`UnitStrudelRepl: PRIMARY confirmed - updating code for unit ${unitId}`);
               replRef.current.editor.setCode(newCode);
               setCurrentCode(newCode);
+            } else {
+              console.error(`UnitStrudelRepl: PRIMARY ISOLATION ERROR - replRef mismatch for unit ${unitId}`);
             }
           };
-          console.log(`UnitStrudelRepl: Registered global method updateUnit${unitId}`);
+          
+          window[`updateUnit${unitId}`] = primaryUpdateMethod;
+          console.log(`UnitStrudelRepl: Registered PRIMARY ISOLATED global method updateUnit${unitId}`);
         }
       }, 100);
       
@@ -143,13 +165,25 @@ const UnitStrudelRepl = ({ unitId }) => {
     }
   };
 
-  // Expose updateCode method globally for this unit
+  // ALWAYS ensure global method is available (robust registration)
   useEffect(() => {
+    console.log(`UnitStrudelRepl: Ensuring updateUnit${unitId} is always available`);
+    // Always register/re-register to ensure method is available
     window[`updateUnit${unitId}`] = updateCode;
+    
+    // Verify registration immediately
+    const isRegistered = `updateUnit${unitId}` in window;
+    console.log(`UnitStrudelRepl: Verified registration for unit ${unitId}:`, isRegistered);
+    
+    if (!isRegistered) {
+      console.error(`UnitStrudelRepl: FAILED to register updateUnit${unitId}!`);
+    }
+    
     return () => {
+      console.log(`UnitStrudelRepl: Cleaning up updateUnit${unitId}`);
       delete window[`updateUnit${unitId}`];
     };
-  }, [unitId]);
+  }, [unitId, updateCode]);
 
   return (
     <div className="space-y-2">
