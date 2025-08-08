@@ -89,9 +89,10 @@ const UnitStrudelRepl = ({ unitId }) => {
   } catch {}
   // Prevent clicks inside editor from deselecting the unit
   try {
-    const stop = (e) => { e.stopPropagation(); };
-    ['mousedown','mouseup','click','dblclick','pointerdown','pointerup','keydown'].forEach(evt => {
-      editorEl.addEventListener(evt, stop);
+    const stopBubble = (e) => { try { e.stopPropagation(); } catch {} };
+    // Only pointer/mouse events; let keyboard/focus flow to the editor
+    ['mousedown','mouseup','click','dblclick','pointerdown','pointerup'].forEach(evt => {
+      editorEl.addEventListener(evt, stopBubble, { capture: false });
     });
   } catch {}
 
@@ -227,7 +228,14 @@ const UnitStrudelRepl = ({ unitId }) => {
   }, [unitId, updateCode]);
 
   return (
-    <div className="space-y-2">
+    <div
+      className="space-y-2"
+      // Stop bubbling to parent selectors, but allow events to reach the editor/buttons
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      data-role="unit-repl-container"
+    >
       <div className="flex items-center gap-2 p-2 bg-gray-800/50 rounded">
         <button
           onClick={handlePlay}
@@ -262,6 +270,10 @@ const UnitStrudelRepl = ({ unitId }) => {
       <div
         ref={containerRef}
         className="border border-gray-600 rounded bg-gray-900 min-h-[300px] relative overflow-hidden"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        data-role="unit-repl-host"
       />
     </div>
   );

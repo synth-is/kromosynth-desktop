@@ -983,7 +983,8 @@ export class LiveCodingUnit extends BaseUnit {
           try { await this.evaluate(); } catch {}
         }
         await waitForSamples();
-        this.replInstance.start();
+  // Use REPL start (editor.repl) for reliable playback/highlighting
+  this.replInstance.start();
         this.isPlaying = true;
         console.log(`LiveCodingUnit ${this.id}: Started playback`);
         // Optional follow-up re-eval after a tick for safety
@@ -1078,7 +1079,11 @@ export class LiveCodingUnit extends BaseUnit {
   // Just evaluate the code without trying to manually start/stop
         // Let Strudel handle its own lifecycle
   console.log(`LiveCodingUnit ${this.id}: Attempting to evaluate code:`, code);
+  // Sync code into the editor UI first to enable editor-side markers/highlighting
+  try { if (this.editorInstance.setCode) this.editorInstance.setCode(code); } catch {}
   await Promise.resolve(this.replInstance.evaluate(code));
+  // Nudge the UI to refresh highlighting if the editor supports it
+  try { if (typeof this.editorInstance.refresh === 'function') this.editorInstance.refresh(); } catch {}
 
   this.currentCode = code;
   this.hasEvaluated = true;
