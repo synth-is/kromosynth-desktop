@@ -28,14 +28,17 @@ export class LiveCodingUnit extends BaseUnit {
     
     // Playback state
     this.isPlaying = false;
-  this.hasEvaluated = false;
-  this.lastEvaluatedCode = '';
+    this.hasEvaluated = false;
+    this.lastEvaluatedCode = '';
     
     // Audio buffer to blob URL conversion cache
     this.blobUrlCache = new Map(); // genomeId-params -> blobUrl
     
     // Callback for when code changes (to notify editor)
     this.onCodeChange = null;
+    
+    // Queue for sync/solo updates when element not yet attached
+    this._pendingUiFlags = {};
     
     console.log(`LiveCodingUnit ${this.id} initialized`);
   }
@@ -69,14 +72,54 @@ export class LiveCodingUnit extends BaseUnit {
    */
   async setReplInstance(editor, strudelElement = null) {
     console.log(`LiveCodingUnit ${this.id}: setReplInstance called with strudelElement:`, !!strudelElement);
-  // Determine if element changed (reattach)
-  const prevElement = this.strudelElement;
-  const elementChanged = prevElement && strudelElement && prevElement !== strudelElement;
+    // Determine if element changed (reattach)
+    const prevElement = this.strudelElement;
+    const elementChanged = prevElement && strudelElement && prevElement !== strudelElement;
 
-  // Update references
-  this.replInstance = editor?.repl;
-  this.editorInstance = editor;
-  this.strudelElement = strudelElement; // Store reference to strudel-editor for sync/solo
+    // Update references
+    this.replInstance = editor?.repl;
+    this.editorInstance = editor;
+    this.strudelElement = strudelElement; // Store reference to strudel-editor for sync/solo
+
+    // Apply any pending sync/solo flags now that we have the element
+    try {
+      if (this.strudelElement && this._pendingUiFlags) {
+        if (this._pendingUiFlags.sync !== undefined) this.strudelElement.sync = this._pendingUiFlags.sync;
+        if (this._pendingUiFlags.solo !== undefined) this.strudelElement.solo = this._pendingUiFlags.solo;
+        this._pendingUiFlags = {};
+      }
+    } catch {}
+
+    // Rebind code change listeners
+    try {
+      // Clean up old listeners
+      if (this._unbindReplListeners) { try { this._unbindReplListeners(); } catch {} }
+      if (this.strudelElement) {
+    const onMaybeCodeChange = () => {
+          try {
+            const live = (this.replInstance?.getCode && this.replInstance.getCode()) || this.editorInstance?.code || this.currentCode;
+            if (typeof live === 'string' && live !== this.currentCode) {
+              this.currentCode = live;
+      this.hasEvaluated = false; // force re-evaluate on next play so edits take effect
+              // Persist to config so it survives switches
+              try {
+                const unitElement = document.querySelector(`[data-unit-id="${this.id}"]`);
+                if (unitElement) {
+                  const updateEvent = new CustomEvent('updateUnitConfig', {
+                    detail: { unitId: this.id, config: { strudelCode: live }, source: 'LiveCodingUnit.editorChange' }
+                  });
+                  document.dispatchEvent(updateEvent);
+                }
+              } catch {}
+            }
+          } catch {}
+        };
+        // Attach several generic events that fire during editing
+        const evts = ['input','change','keyup','blur'];
+        evts.forEach((evt) => this.strudelElement.addEventListener(evt, onMaybeCodeChange));
+        this._unbindReplListeners = () => { evts.forEach((evt) => this.strudelElement.removeEventListener(evt, onMaybeCodeChange)); };
+      }
+    } catch {}
   // Do not blanket-reset hasEvaluated; keep until we explicitly re-evaluate
     
     // Handle any pending samples and code now that REPL is ready
@@ -952,9 +995,16 @@ export class LiveCodingUnit extends BaseUnit {
     if (!this.replInstance) return;
 
     // Ensure a pattern has been evaluated before starting to avoid neocyclist errors
-    const code = (this.currentCode || '').trim();
-    const currentReplCode = (this.replInstance.getCode ? this.replInstance.getCode() : '').trim();
-    const needsEvaluate = !this.hasEvaluated || !currentReplCode || (code && currentReplCode !== code);
+  // Prefer current code from the editor/repl to include live edits
+  const liveCode = (this.replInstance.getCode ? this.replInstance.getCode() : (this.editorInstance?.code || this.currentCode || '')).trim();
+  const code = liveCode;
+  if (!code) {
+    // If code is empty, evaluate silence and do not start playback
+    try { this.evaluate(); } catch {}
+    return;
+  }
+  const currentReplCode = (this.replInstance.getCode ? this.replInstance.getCode() : '').trim();
+  const needsEvaluate = !this.hasEvaluated || (this.lastEvaluatedCode || '') !== code;
 
   const waitForSamples = async (timeoutMs = 300, intervalMs = 20) => {
       const codeStr = (this.currentCode || '').trim();
@@ -983,8 +1033,12 @@ export class LiveCodingUnit extends BaseUnit {
           try { await this.evaluate(); } catch {}
         }
         await waitForSamples();
-  // Use REPL start (editor.repl) for reliable playback/highlighting
-  this.replInstance.start();
+        // Prefer strudel element's start to enable built-in highlighting; fallback to repl
+        if (this.strudelElement && typeof this.strudelElement.start === 'function') {
+          this.strudelElement.start();
+        } else {
+          this.replInstance.start();
+        }
         this.isPlaying = true;
         console.log(`LiveCodingUnit ${this.id}: Started playback`);
         // Optional follow-up re-eval after a tick for safety
@@ -1022,7 +1076,13 @@ export class LiveCodingUnit extends BaseUnit {
    */
   stop() {
     if (this.replInstance) {
-  try { this.replInstance.stop(); } catch {}
+  try {
+    if (this.strudelElement && typeof this.strudelElement.stop === 'function') {
+      this.strudelElement.stop();
+    } else {
+      this.replInstance.stop();
+    }
+  } catch {}
   // Extra guard: schedule a second stop to catch lingering clocks after UI switches
   try { setTimeout(() => { try { this.replInstance.stop(); } catch {} }, 50); } catch {}
   this.isPlaying = false;
@@ -1048,8 +1108,8 @@ export class LiveCodingUnit extends BaseUnit {
    */
   async evaluate() {
     if (this.replInstance && this.editorInstance) {
-  // Prefer the unit’s currentCode as the source of truth
-  const code = this.currentCode || this.editorInstance.code;
+  // Prefer the editor/repl's code as the source of truth (captures live edits)
+  let code = (this.replInstance.getCode ? this.replInstance.getCode() : (this.editorInstance.code || this.currentCode));
       
       // Debug: Check sample availability before evaluation
       console.log(`LiveCodingUnit ${this.id}: About to evaluate code: ${code}`);
@@ -1061,10 +1121,9 @@ export class LiveCodingUnit extends BaseUnit {
       
       // Use a more conservative evaluation approach to avoid queryArc errors
   try {
-        // Validate the code before evaluation to avoid transpiler errors
+        // Normalize empty code to silence (clears previous pattern/highlighting)
         if (!code || code.trim().length === 0) {
-          console.warn(`LiveCodingUnit ${this.id}: Cannot evaluate empty code`);
-          return;
+          code = 'silence';
         }
 
         // Check for basic Strudel pattern structure
@@ -1079,9 +1138,15 @@ export class LiveCodingUnit extends BaseUnit {
   // Just evaluate the code without trying to manually start/stop
         // Let Strudel handle its own lifecycle
   console.log(`LiveCodingUnit ${this.id}: Attempting to evaluate code:`, code);
-  // Sync code into the editor UI first to enable editor-side markers/highlighting
+  // Keep the element attribute and editor UI in sync for UI layers/highlighting
+  try { this.strudelElement?.setAttribute('code', code); } catch {}
   try { if (this.editorInstance.setCode) this.editorInstance.setCode(code); } catch {}
-  await Promise.resolve(this.replInstance.evaluate(code));
+  // Prefer the element's evaluate when available (some versions wire highlighting here)
+  if (this.strudelElement && typeof this.strudelElement.evaluate === 'function') {
+    await Promise.resolve(this.strudelElement.evaluate(code));
+  } else {
+    await Promise.resolve(this.replInstance.evaluate(code));
+  }
   // Nudge the UI to refresh highlighting if the editor supports it
   try { if (typeof this.editorInstance.refresh === 'function') this.editorInstance.refresh(); } catch {}
 
@@ -1191,7 +1256,10 @@ export class LiveCodingUnit extends BaseUnit {
         }
       }
     } else {
-      console.warn(`LiveCodingUnit ${this.id}: No strudel element reference for sync/solo update`);
+      // Cache flags for later when the element is attached
+      if (config.sync !== undefined) this._pendingUiFlags.sync = config.sync;
+      if (config.solo !== undefined) this._pendingUiFlags.solo = config.solo;
+      console.debug(`LiveCodingUnit ${this.id}: Queued sync/solo for later attach`, this._pendingUiFlags);
     }
     
     // CRITICAL: Update current code if strudelCode is provided AND different

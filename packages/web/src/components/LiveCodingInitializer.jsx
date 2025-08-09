@@ -16,6 +16,21 @@ const LiveCodingInitializer = ({ units }) => {
   useEffect(() => {
     if (!containerRef.current) return;
 
+    // Ensure Strudel editor highlighting is enabled before any editors are created
+    try {
+      const key = 'codemirror-settings';
+      const existing = localStorage.getItem(key);
+      const defaults = {
+        // Keep Strudel defaults, just force highlighting on
+        isPatternHighlightingEnabled: true,
+      };
+      const next = existing ? { ...JSON.parse(existing), ...defaults } : defaults;
+      // Only write if changed to avoid thrashing
+      if (!existing || JSON.parse(existing).isPatternHighlightingEnabled !== true) {
+        localStorage.setItem(key, JSON.stringify(next));
+      }
+    } catch {}
+
     // Find all LiveCodingUnits
     const liveCodingUnits = units.filter(unit => unit.type === UNIT_TYPES.LIVE_CODING);
     
