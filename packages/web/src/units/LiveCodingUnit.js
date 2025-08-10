@@ -28,8 +28,6 @@ export class LiveCodingUnit extends BaseUnit {
     
     // Playback state
     this.isPlaying = false;
-    this.hasEvaluated = false;
-    this.lastEvaluatedCode = '';
     
     // Audio buffer to blob URL conversion cache
     this.blobUrlCache = new Map(); // genomeId-params -> blobUrl
@@ -90,81 +88,19 @@ export class LiveCodingUnit extends BaseUnit {
       }
     } catch {}
 
-    // Rebind code change listeners with improved detection
-    try {
-      // Clean up old listeners
-      if (this._unbindReplListeners) { try { this._unbindReplListeners(); } catch {} }
-      if (this.strudelElement && this.editorInstance) {
-        // Track code changes more reliably
-        const onCodeChange = () => {
-          try {
-            // Use getCurrentCode to get the actual live value
-            const liveCode = this.getCurrentCode();
-            
-            // Check if code actually changed
-            if (typeof liveCode === 'string' && liveCode !== this.lastEvaluatedCode) {
-              console.log(`LiveCodingUnit ${this.id}: Code changed from manual edit`);
-              console.log(`  Old: ${this.lastEvaluatedCode?.substring(0, 50)}`);
-              console.log(`  New: ${liveCode?.substring(0, 50)}`);
-              
-              // Don't update this.currentCode here - let getCurrentCode() be the source of truth
-              // Just mark that we need to re-evaluate
-              this.hasEvaluated = false; // Force re-evaluate on next play
-              this.lastEvaluatedCode = ''; // Clear last evaluated to ensure re-evaluation
-              
-              // Persist to config so it survives switches
-              try {
-                const unitElement = document.querySelector(`[data-unit-id="${this.id}"]`);
-                if (unitElement) {
-                  const updateEvent = new CustomEvent('updateUnitConfig', {
-                    detail: { unitId: this.id, config: { strudelCode: liveCode }, source: 'LiveCodingUnit.editorChange' }
-                  });
-                  document.dispatchEvent(updateEvent);
-                }
-              } catch {}
-            }
-          } catch (err) {
-            console.warn(`LiveCodingUnit ${this.id}: Error tracking code change:`, err);
-          }
-        };
-        
-        // Listen to multiple event types for better coverage
-        const evts = ['input', 'change', 'keyup', 'blur', 'paste', 'cut'];
-        
-        // Also set up a MutationObserver as backup for detecting changes
-        let observer = null;
-        if (this.strudelElement) {
-          observer = new MutationObserver(() => {
-            onCodeChange();
+    // Simple persistence on blur for unit switching
+    if (this.strudelElement) {
+      this.strudelElement.addEventListener('blur', () => {
+        try {
+          const code = this.getCurrentCode();
+          const updateEvent = new CustomEvent('updateUnitConfig', {
+            detail: { unitId: this.id, config: { strudelCode: code }, source: 'LiveCodingUnit.blur' }
           });
-          
-          // Observe attribute changes on the strudel element
-          observer.observe(this.strudelElement, {
-            attributes: true,
-            attributeFilter: ['code'],
-            subtree: false
-          });
-        }
-        
-        // Attach event listeners
-        evts.forEach((evt) => this.strudelElement.addEventListener(evt, onCodeChange));
-        
-        // Store cleanup function
-        this._unbindReplListeners = () => {
-          evts.forEach((evt) => this.strudelElement.removeEventListener(evt, onCodeChange));
-          if (observer) observer.disconnect();
-        };
-        
-        // Also poll for changes as a failsafe (useful for programmatic updates)
-        if (this._codeCheckInterval) clearInterval(this._codeCheckInterval);
-        this._codeCheckInterval = setInterval(() => {
-          onCodeChange();
-        }, 500); // Check every 500ms
-      }
-    } catch (err) {
-      console.error(`LiveCodingUnit ${this.id}: Error setting up code change listeners:`, err);
+          document.dispatchEvent(updateEvent);
+        } catch {}
+      });
     }
-  // Do not blanket-reset hasEvaluated; keep until we explicitly re-evaluate
+
     
     // Handle any pending samples and code now that REPL is ready
     if (this.replInstance && this.editorInstance) {
@@ -1040,17 +976,12 @@ export class LiveCodingUnit extends BaseUnit {
 
     // Get the current code from the editor (including manual edits)
     const code = this.getCurrentCode().trim();
-    
-    console.log(`LiveCodingUnit ${this.id}: play() called with code:`, code?.substring(0, 100));
+    console.log(`LiveCodingUnit ${this.id}: Playing with code:`, code?.substring(0, 60) + '...');
     
     if (!code || code === 'silence') {
-      // If code is empty or silence, stop and return
       this.stop();
       return;
     }
-    
-    // ALWAYS force re-evaluation when play is called to ensure manual edits are applied
-    const needsEvaluate = true;
 
   const waitForSamples = async (timeoutMs = 300, intervalMs = 20) => {
       const codeStr = code.trim(); // Use the fresh code, not this.currentCode
@@ -1084,18 +1015,13 @@ export class LiveCodingUnit extends BaseUnit {
         }
         
         this.isPlaying = true;
-        console.log(`LiveCodingUnit ${this.id}: Started playback with code:`, code?.substring(0, 100));
+        console.log(`LiveCodingUnit ${this.id}: Started playback`);
       } catch (err) {
         console.error(`LiveCodingUnit ${this.id}: start() failed`, err);
       }
     };
     
-    // ALWAYS evaluate the current code before starting
-    console.log(`LiveCodingUnit ${this.id}: Force evaluating current code before start`);
-    
-    // Mark that we need to re-evaluate (don't update currentCode - let getCurrentCode be source of truth)
-    this.hasEvaluated = false;
-    this.lastEvaluatedCode = '';
+    // Always evaluate the current code before starting
     
     this.evaluate()
       .then(() => {
@@ -1111,28 +1037,16 @@ export class LiveCodingUnit extends BaseUnit {
    * Stop the current pattern
    */
   stop() {
-    console.log(`LiveCodingUnit ${this.id}: Stopping playback`);
-    
     if (this.replInstance) {
       try {
-        // Stop using both methods to ensure it actually stops
-        if (this.strudelElement && typeof this.strudelElement.stop === 'function') {
-          this.strudelElement.stop();
-        }
-        if (this.replInstance && typeof this.replInstance.stop === 'function') {
-          this.replInstance.stop();
-        }
-        
-        // Also call hush to immediately stop all sounds
-        if (this.replInstance && typeof this.replInstance.hush === 'function') {
-          this.replInstance.hush();
-        }
+        // Stop using all available methods
+        this.strudelElement?.stop?.();
+        this.replInstance?.stop?.();
+        this.replInstance?.hush?.(); // Immediately stop all sounds
       } catch (err) {
         console.error(`LiveCodingUnit ${this.id}: Error stopping playback:`, err);
       }
-      
       this.isPlaying = false;
-      console.log(`LiveCodingUnit ${this.id}: Stopped playback`);
     }
   }
 
@@ -1140,8 +1054,6 @@ export class LiveCodingUnit extends BaseUnit {
    * Toggle playback
    */
   toggle() {
-    console.log(`LiveCodingUnit ${this.id}: Toggle called, isPlaying=${this.isPlaying}`);
-    
     if (this.replInstance) {
       if (this.isPlaying) {
         this.stop();
@@ -1160,10 +1072,9 @@ export class LiveCodingUnit extends BaseUnit {
       return;
     }
 
-    // Get the current code using the new helper method
+    // Get the current code using the helper method
     let code = this.getCurrentCode();
-    
-    console.log(`LiveCodingUnit ${this.id}: Evaluating code:`, code?.substring(0, 100));
+    console.log(`LiveCodingUnit ${this.id}: Evaluating:`, code?.substring(0, 60) + '...');
     
     try {
       // Normalize empty code to silence
@@ -1178,26 +1089,15 @@ export class LiveCodingUnit extends BaseUnit {
         console.warn('ensureSamplesForCode failed', e); 
       }
 
-      // CRITICAL: Stop any currently playing pattern before evaluating new code
-      // This ensures the REPL doesn't keep playing the old pattern
-      if (this.replInstance.isPlaying && typeof this.replInstance.stop === 'function') {
-        this.replInstance.stop();
-      }
+      // Stop any currently playing pattern before evaluating new code
+      this.replInstance?.stop?.();
       
-      // Evaluate the code through the REPL
-      // Do NOT set the code back into the editor - this overwrites manual changes!
-      console.log(`LiveCodingUnit ${this.id}: Calling replInstance.evaluate with code:`, code?.substring(0, 100));
-      
-      // Use the REPL's evaluate directly to ensure it processes the new pattern
+      // Evaluate the new pattern
       await Promise.resolve(this.replInstance.evaluate(code));
       
-      // Update our internal state AFTER successful evaluation
-      // Only update currentCode if evaluation succeeded - this becomes our "last known good" code
+      // Store as "last known good" code
       this.currentCode = code;
-      this.hasEvaluated = true;
-      this.lastEvaluatedCode = code;
-      
-      console.log(`LiveCodingUnit ${this.id}: Successfully evaluated code`);
+      console.log(`LiveCodingUnit ${this.id}: Evaluation successful`);
       
     } catch (err) {
       console.error(`LiveCodingUnit ${this.id}: Error during evaluation:`, err);
@@ -1212,8 +1112,6 @@ export class LiveCodingUnit extends BaseUnit {
           console.error(`LiveCodingUnit ${this.id}: Even fallback pattern failed:`, fallbackErr);
         }
       }
-      this.hasEvaluated = false;
-      this.lastEvaluatedCode = '';
     }
   }
 
@@ -1388,101 +1286,58 @@ export class LiveCodingUnit extends BaseUnit {
   }
 
   /**
-   * Helper method to get the current code from various sources
-   * This ensures we always get the most up-to-date code including manual edits
+   * Get current code from CodeMirror editor
    */
   getCurrentCode() {
-    let code = null;
-    
-    try {
-      // CRITICAL: Get the LIVE value from CodeMirror, not cached values
-      // The Strudel editor uses CodeMirror internally, and we need to get the actual current text
-      
-      // Method 0: Try to find CodeMirror instance directly in the DOM
-      if (this.strudelElement) {
-        // Look for CodeMirror instance in the strudel element
-        const cmElement = this.strudelElement.querySelector('.CodeMirror');
-        if (cmElement && cmElement.CodeMirror) {
-          // Found CodeMirror instance!
-          const cm = cmElement.CodeMirror;
-          if (typeof cm.getValue === 'function') {
-            code = cm.getValue();
-            console.log(`LiveCodingUnit ${this.id}: Got code directly from DOM CodeMirror.getValue():`, code?.substring(0, 50));
-          }
-        }
+    // Get from CodeMirror directly (the only reliable source for manual edits)
+    if (this.strudelElement) {
+      const cmElement = this.strudelElement.querySelector('.CodeMirror');
+      if (cmElement && cmElement.CodeMirror && typeof cmElement.CodeMirror.getValue === 'function') {
+        const code = cmElement.CodeMirror.getValue();
+        console.log(`LiveCodingUnit ${this.id}: Got code from DOM CodeMirror:`, code?.substring(0, 50));
+        return code;
       }
-      
-      // Method 1: Try to get from the actual CodeMirror instance if available
-      if (this.strudelElement && this.strudelElement.editor) {
-        // The strudel-editor element has an editor property that contains the CodeMirror wrapper
-        const editor = this.strudelElement.editor;
-        
-        // Try to get the live code from CodeMirror
-        if (editor.cm && typeof editor.cm.getValue === 'function') {
-          // Direct CodeMirror access
-          code = editor.cm.getValue();
-          console.log(`LiveCodingUnit ${this.id}: Got code from editor.cm.getValue():`, code?.substring(0, 50));
-        } else if (editor._cm && typeof editor._cm.getValue === 'function') {
-          // Alternative CodeMirror reference
-          code = editor._cm.getValue();
-          console.log(`LiveCodingUnit ${this.id}: Got code from editor._cm.getValue():`, code?.substring(0, 50));
-        } else if (typeof editor.getCode === 'function') {
-          // Strudel editor's getCode method
-          code = editor.getCode();
-          console.log(`LiveCodingUnit ${this.id}: Got code from editor.getCode():`, code?.substring(0, 50));
-        } else if (editor.code !== undefined) {
-          // Fallback to code property (might be stale)
-          code = editor.code;
-          console.log(`LiveCodingUnit ${this.id}: Got code from editor.code (might be stale):`, code?.substring(0, 50));
-        }
-      }
-      
-      // Method 2: Try via editorInstance if Method 1 didn't work
-      if (!code && this.editorInstance) {
-        if (this.editorInstance.cm && typeof this.editorInstance.cm.getValue === 'function') {
-          code = this.editorInstance.cm.getValue();
-          console.log(`LiveCodingUnit ${this.id}: Got code from editorInstance.cm.getValue():`, code?.substring(0, 50));
-        } else if (this.editorInstance._cm && typeof this.editorInstance._cm.getValue === 'function') {
-          code = this.editorInstance._cm.getValue();
-          console.log(`LiveCodingUnit ${this.id}: Got code from editorInstance._cm.getValue():`, code?.substring(0, 50));
-        } else if (typeof this.editorInstance.getCode === 'function') {
-          code = this.editorInstance.getCode();
-          console.log(`LiveCodingUnit ${this.id}: Got code from editorInstance.getCode():`, code?.substring(0, 50));
-        } else if (this.editorInstance.code !== undefined) {
-          code = this.editorInstance.code;
-          console.log(`LiveCodingUnit ${this.id}: Got code from editorInstance.code (might be stale):`, code?.substring(0, 50));
-        }
-      }
-      
-      // Method 3: Try to get from REPL's getCode method
-      if (!code && this.replInstance && typeof this.replInstance.getCode === 'function') {
-        code = this.replInstance.getCode();
-        console.log(`LiveCodingUnit ${this.id}: Got code from replInstance.getCode():`, code?.substring(0, 50));
-      }
-      
-      // Method 4: Last resort - get from element attribute (usually stale)
-      if (!code && this.strudelElement) {
-        const attrCode = this.strudelElement.getAttribute('code');
-        if (attrCode) {
-          code = attrCode;
-          console.log(`LiveCodingUnit ${this.id}: Got code from element attribute (likely stale):`, code?.substring(0, 50));
-        }
-      }
-      
-      // Method 5: Fallback to our stored current code
-      if (!code) {
-        code = this.currentCode || this.basePattern;
-        console.log(`LiveCodingUnit ${this.id}: Using fallback currentCode:`, code?.substring(0, 50));
-      }
-      
-    } catch (err) {
-      console.error(`LiveCodingUnit ${this.id}: Error getting current code:`, err);
-      code = this.currentCode || this.basePattern;
     }
     
-    // Log what we're returning for debugging
-    console.log(`LiveCodingUnit ${this.id}: getCurrentCode() returning:`, code?.substring(0, 100));
-    return code || this.currentCode || this.basePattern;
+    // Fallback to editor instance
+    if (this.editorInstance && this.editorInstance.cm && typeof this.editorInstance.cm.getValue === 'function') {
+      const code = this.editorInstance.cm.getValue();
+      console.log(`LiveCodingUnit ${this.id}: Got code from editorInstance.cm:`, code?.substring(0, 50));
+      return code;
+    }
+    
+    // Try alternative references
+    if (this.strudelElement && this.strudelElement.editor) {
+      const editor = this.strudelElement.editor;
+      if (editor.cm && typeof editor.cm.getValue === 'function') {
+        const code = editor.cm.getValue();
+        console.log(`LiveCodingUnit ${this.id}: Got code from strudelElement.editor.cm:`, code?.substring(0, 50));
+        return code;
+      }
+      if (typeof editor.getCode === 'function') {
+        const code = editor.getCode();
+        console.log(`LiveCodingUnit ${this.id}: Got code from editor.getCode():`, code?.substring(0, 50));
+        return code;
+      }
+      if (editor.code !== undefined) {
+        console.log(`LiveCodingUnit ${this.id}: Got code from editor.code (might be stale):`, editor.code?.substring(0, 50));
+        return editor.code;
+      }
+    }
+    
+    // Debug: log what we checked
+    console.log(`LiveCodingUnit ${this.id}: getCurrentCode fallback paths:`, {
+      hasStrudelElement: !!this.strudelElement,
+      hasCodeMirrorElement: !!this.strudelElement?.querySelector('.CodeMirror'),
+      hasCodeMirrorInstance: !!this.strudelElement?.querySelector('.CodeMirror')?.CodeMirror,
+      hasEditorInstance: !!this.editorInstance,
+      hasEditorCm: !!this.editorInstance?.cm,
+      hasStrudelEditor: !!this.strudelElement?.editor
+    });
+    
+    // Last resort: use stored code or base pattern
+    console.log(`LiveCodingUnit ${this.id}: Using fallback currentCode:`, this.currentCode?.substring(0, 50));
+    return this.currentCode || this.basePattern;
   }
 
   /**
@@ -1494,17 +1349,7 @@ export class LiveCodingUnit extends BaseUnit {
     // Stop playback
     this.stop();
     
-    // Clear intervals
-    if (this._codeCheckInterval) {
-      clearInterval(this._codeCheckInterval);
-      this._codeCheckInterval = null;
-    }
-    
-    // Clear event listeners
-    if (this._unbindReplListeners) {
-      try { this._unbindReplListeners(); } catch {}
-      this._unbindReplListeners = null;
-    }
+
     
     // Clear sample bank (this will revoke blob URLs)
     this.clearSampleBank();
