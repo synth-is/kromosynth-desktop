@@ -1826,7 +1826,16 @@ const renderLiveCodingControls = (unit) => {
               key={unit.id}
               data-unit-id={unit.id}
               data-unit-type={unit.type}
-              onClick={() => onSelectUnit(unit.id)}
+              onClick={() => {
+                // Persist current unit's code before switching
+                if (selectedUnitId && selectedUnitId !== unit.id) {
+                  const currentUnit = unitsRef.current.get(selectedUnitId);
+                  if (currentUnit && currentUnit.type === UNIT_TYPES.LIVE_CODING && typeof currentUnit.onDeselect === 'function') {
+                    currentUnit.onDeselect();
+                  }
+                }
+                onSelectUnit(unit.id);
+              }}
               className={`bg-gray-800/50 rounded-sm p-2 cursor-pointer select-none transition-all
                 ${selectedUnitId === unit.id ? 'ring-1 ring-blue-500' : ''}`}
             >
