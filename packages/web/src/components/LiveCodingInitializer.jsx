@@ -37,6 +37,12 @@ const LiveCodingInitializer = ({ units }) => {
     // Create REPL instances for new LiveCodingUnits
     liveCodingUnits.forEach(unit => {
       if (!replsRef.current.has(unit.id)) {
+        // Skip if a local in-place editor already exists (version 4 strategy)
+        const localEl = document.getElementById(`strudel-editor-local-${unit.id}`);
+        if (localEl) {
+          console.log(`LiveCodingInitializer: Skipping unit ${unit.id} (local editor present)`);
+          return;
+        }
         console.log(`LiveCodingInitializer: Creating REPL for unit ${unit.id}`);
         
         // Create editor exactly like StrudelReplTest.jsx
@@ -49,14 +55,17 @@ const LiveCodingInitializer = ({ units }) => {
         editor.sync = unit.sync !== undefined ? unit.sync : true;
         editor.solo = unit.solo !== undefined ? unit.solo : false;
         
-        // Park the editor off-screen but keep it functional so it can measure/layout
+        // CRITICAL FIX: Keep editors visible but hidden with opacity/pointer-events
+        // This allows CodeMirror to initialize properly with all features including highlighting
         Object.assign(editor.style, {
           position: 'absolute',
-          left: '-20000px',
-          top: '0px',
+          left: '0',
+          top: '0',
           width: '800px',
           height: '600px',
-          visibility: 'hidden'
+          opacity: '0',
+          pointerEvents: 'none',
+          zIndex: '-1'
         });
         editor.setAttribute('data-unit-id', unit.id);
         editor.setAttribute('id', `strudel-editor-${unit.id}`);
@@ -68,14 +77,36 @@ const LiveCodingInitializer = ({ units }) => {
         
         // Wait for REPL to be ready and connect to unit instance
         const checkReady = () => {
-      if (editor.editor && editor.editor.repl) {
+          if (editor.editor && editor.editor.repl) {
             console.log(`LiveCodingInitializer: REPL ready for unit ${unit.id}`);
+            
+            // CRITICAL: Force CodeMirror to refresh and enable highlighting
+            // This ensures highlighting is initialized even for hidden editors
+            if (editor.editor.cm) {
+              try {
+                // Force refresh to recalculate dimensions
+                editor.editor.cm.refresh();
+                
+                // Ensure highlighting is enabled
+                if (typeof editor.editor.enableHighlighting === 'function') {
+                  editor.editor.enableHighlighting(true);
+                }
+                
+                // Trigger a dummy evaluation to initialize highlighting state
+                // Using silence pattern to avoid sound
+                editor.editor.repl.evaluate('silence');
+                
+                console.log(`LiveCodingInitializer: Forced refresh and highlighting for unit ${unit.id}`);
+              } catch (err) {
+                console.warn(`Failed to force refresh CodeMirror for unit ${unit.id}:`, err);
+              }
+            }
             
             // Connect to unit instance
             const unitInstance = unitsRef.current?.get(unit.id);
             if (unitInstance && unitInstance.setReplInstance) {
-        // Pass both the editor instance and the strudel-editor element (for sync/solo updates)
-        unitInstance.setReplInstance(editor.editor, editor);
+              // Pass both the editor instance and the strudel-editor element (for sync/solo updates)
+              unitInstance.setReplInstance(editor.editor, editor);
               console.log(`LiveCodingInitializer: Connected REPL to unit ${unit.id}`);
 
               // Nudge UI to re-render so panels reflect readiness immediately
@@ -147,11 +178,14 @@ const LiveCodingInitializer = ({ units }) => {
         position: 'fixed',
         left: 0,
         top: 0,
-        width: 0,
-        height: 0,
-        overflow: 'visible',
+        width: '800px',
+        height: '600px',
+        overflow: 'hidden',
         pointerEvents: 'none',
-        zIndex: 2147483647 // ensure overlays appear above panel
+  // Raised z-index so child editors we temporarily "project" with higher z-index values
+  // can appear above application panels. Individual editors keep pointerEvents managed
+  // by the overlay logic in UnitStrudelRepl while the container remains non-interactive.
+  zIndex: 2000
       }}
       data-testid="live-coding-initializer"
     />

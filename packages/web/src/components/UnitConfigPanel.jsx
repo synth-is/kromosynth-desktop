@@ -604,16 +604,34 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
                       <div className="text-xs text-gray-500 mt-2">
                         Double-click sounds in the phylogenetic tree to add them to this unit's sample bank.
                       </div>
-                      <button
-                        onClick={() => {
-                          if (actualInstance) {
-                            actualInstance.clearSampleBank();
-                          }
-                        }}
-                        className="mt-2 px-3 py-1 text-xs bg-red-600/50 hover:bg-red-600 text-white rounded"
-                      >
-                        Clear Sample Bank
-                      </button>
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (actualInstance) {
+                              actualInstance.clearSampleBank();
+                            }
+                          }}
+                          className="px-3 py-1 text-xs bg-red-600/50 hover:bg-red-600 text-white rounded"
+                        >
+                          Clear Bank
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Load debug script and run debug
+                            import('../utils/liveCodingDebug.js').then(() => {
+                              window.liveCodingDebug(unit.id);
+                            }).catch(() => {
+                              // Fallback if import fails
+                              console.log('Debug script not available. Use: liveCodingDebug(' + unit.id + ')');
+                            });
+                          }}
+                          className="px-3 py-1 text-xs bg-blue-600/50 hover:bg-blue-600 text-white rounded"
+                        >
+                          Debug
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-gray-500">Unit instance not available</div>

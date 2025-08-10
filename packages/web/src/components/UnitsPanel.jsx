@@ -7,8 +7,9 @@ import { LoopingUnit } from '../units/LoopingUnit';
 import { LiveCodingUnit } from '../units/LiveCodingUnit';
 import { CellDataFormatter } from '../utils/CellDataFormatter';
 import { useUnits } from '../UnitsContext';
-import UnitStrudelRepl from './UnitStrudelRepl';
-import LiveCodingInitializer from './LiveCodingInitializer';
+import UnitStrudelReplFixed from './UnitStrudelReplFixed';
+// Removed LiveCodingInitializer - using direct REPL creation instead
+// import LiveCodingInitializer from './LiveCodingInitializer';
 
 // Enhanced Slider component to show default value markers
 const Slider = ({ 
@@ -1117,28 +1118,28 @@ const TrajectoryEventParams = ({
   };
 
 const renderLiveCodingControls = (unit) => {
-    if (unit.type !== UNIT_TYPES.LIVE_CODING) return null;
+if (unit.type !== UNIT_TYPES.LIVE_CODING) return null;
 
-    const liveCodingUnit = unitsRef.current.get(unit.id);
-    if (!liveCodingUnit) {
-      console.warn(`LiveCodingUnit ${unit.id} not found in unitsRef`);
-      return (
-        <div className="mt-2 space-y-2">
-          <div className="text-xs text-red-400">Unit not initialized</div>
-        </div>
-      );
-    }
+const liveCodingUnit = unitsRef.current.get(unit.id);
+if (!liveCodingUnit) {
+console.warn(`LiveCodingUnit ${unit.id} not found in unitsRef`);
+return (
+<div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
+<div className="text-xs text-red-400">Unit not initialized</div>
+</div>
+);
+}
 
-    let sampleBankInfo;
-    try {
-      sampleBankInfo = liveCodingUnit.getSampleBankInfo();
-    } catch (error) {
-      console.error('Error getting sample bank info:', error);
-      sampleBankInfo = { sampleCount: 0, samples: [] };
-    }
+let sampleBankInfo;
+try {
+sampleBankInfo = liveCodingUnit.getSampleBankInfo();
+} catch (error) {
+console.error('Error getting sample bank info:', error);
+sampleBankInfo = { sampleCount: 0, samples: [] };
+}
 
-    return (
-      <div className="mt-2 space-y-2">
+return (
+<div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
         {/* Sample Bank Info */}
         <div className="flex items-center gap-2 px-2 py-1 bg-gray-700/50 rounded-sm">
           <span className="text-xs text-gray-300">
@@ -1350,7 +1351,7 @@ const renderLiveCodingControls = (unit) => {
         {/* Dead simple REPL - no complex bridging */}
         <div className="border-t border-gray-700 pt-2">
           <div className="text-xs text-gray-400 mb-2 px-2">Live Code Editor</div>
-          <UnitStrudelRepl unitId={unit.id} />
+          <UnitStrudelReplFixed unitId={unit.id} />
         </div>
       </div>
     );
@@ -1815,8 +1816,7 @@ const renderLiveCodingControls = (unit) => {
       data-selected-unit-id={selectedUnitId}
       data-selected-unit-type={units.find(u => u.id === selectedUnitId)?.type}
     >
-  {/* Hidden initializer to pre-create isolated strudel-editor instances per LiveCodingUnit */}
-  <LiveCodingInitializer units={units} />
+  {/* LiveCodingInitializer removed - using direct REPL creation for better isolation */}
 
       <div className="p-2 flex flex-col gap-2 min-w-[16rem]">
         {/* Units list container with minimum height */}
@@ -1877,6 +1877,7 @@ const renderLiveCodingControls = (unit) => {
                     max="0"
                     value={unit.volume}
                     onClick={e => e.stopPropagation()}
+                    onMouseDown={e => e.stopPropagation()}
                     onChange={(e) => {
                       e.stopPropagation();
                       onUpdateVolume(unit.id, Number(e.target.value));
@@ -1890,12 +1891,12 @@ const renderLiveCodingControls = (unit) => {
                 </div>
               </div>
               {unit.id === selectedUnitId && (
-                <>
+                <div onClick={(e) => e.stopPropagation()}>
                   {renderTrajectoryControls(unit)}
                   {renderLoopingControls(unit)}
                   {renderLiveCodingControls(unit)}
                   {unit.type === UNIT_TYPES.SEQUENCING && renderSequenceControls(unit)}
-                </>
+                </div>
               )}
             </div>
           ))}

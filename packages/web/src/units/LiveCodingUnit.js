@@ -66,97 +66,139 @@ export class LiveCodingUnit extends BaseUnit {
   }
 
   /**
-   * Simple connection - no complex bridging needed
+   * Connect this unit to a REPL instance (simplified for single REPL system)
+   * Now supports both immediate connection (element only) and full connection (editor + element)
    */
   async setReplInstance(editor, strudelElement = null) {
-    console.log(`LiveCodingUnit ${this.id}: setReplInstance called with strudelElement:`, !!strudelElement);
-    // Determine if element changed (reattach)
+    console.log(`LiveCodingUnit ${this.id}: setReplInstance called`, {
+      hasEditor: !!editor,
+      hasStrudelElement: !!strudelElement,
+      editorHasRepl: !!editor?.repl,
+      isElementOnly: !editor?.repl && !!editor // Just the element reference
+    });
+    
+    // Store previous element for change detection
     const prevElement = this.strudelElement;
     const elementChanged = prevElement && strudelElement && prevElement !== strudelElement;
 
-    // Update references
-    this.replInstance = editor?.repl;
-    this.editorInstance = editor;
-    this.strudelElement = strudelElement; // Store reference to strudel-editor for sync/solo
+    // Handle both immediate (element only) and full (editor) connections
+    if (editor?.repl) {
+      // Full connection with actual editor instance
+      this.replInstance = editor.repl;
+      this.editorInstance = editor;
+    } else {
+      // Immediate connection with just the element (for showing "Ready" status)
+      this.replInstance = editor; // The element itself acts as a placeholder
+      this.editorInstance = null; // Will be set later when full editor is ready
+    }
+    
+    this.strudelElement = strudelElement || editor;
 
-    // Apply any pending sync/solo flags now that we have the element
+    console.log(`LiveCodingUnit ${this.id}: REPL instance connected`, {
+      hasReplInstance: !!this.replInstance,
+      hasEditorInstance: !!this.editorInstance,
+      hasStrudelElement: !!this.strudelElement,
+      connectionType: editor?.repl ? 'full' : 'immediate',
+      elementChanged
+    });
+
+    // Apply any pending sync/solo flags
     try {
       if (this.strudelElement && this._pendingUiFlags) {
-        if (this._pendingUiFlags.sync !== undefined) this.strudelElement.sync = this._pendingUiFlags.sync;
-        if (this._pendingUiFlags.solo !== undefined) this.strudelElement.solo = this._pendingUiFlags.solo;
+        if (this._pendingUiFlags.sync !== undefined) {
+          this.strudelElement.sync = this._pendingUiFlags.sync;
+          console.log(`LiveCodingUnit ${this.id}: Applied pending sync:`, this._pendingUiFlags.sync);
+        }
+        if (this._pendingUiFlags.solo !== undefined) {
+          this.strudelElement.solo = this._pendingUiFlags.solo;
+          console.log(`LiveCodingUnit ${this.id}: Applied pending solo:`, this._pendingUiFlags.solo);
+        }
         this._pendingUiFlags = {};
       }
-    } catch {}
-
-    // Persist code changes for unit switching
-    // We need both blur AND a more reliable method for when switching units
-    if (this.strudelElement) {
-      // On blur (when clicking outside)
-      this.strudelElement.addEventListener('blur', () => {
-        this.persistCurrentCode();
-      });
-      
-      // Also persist whenever the code might have changed
-      // Use input event which fires on every keystroke
-      this.strudelElement.addEventListener('input', () => {
-        // Debounce to avoid too many updates
-        clearTimeout(this._persistTimeout);
-        this._persistTimeout = setTimeout(() => {
-          this.persistCurrentCode();
-        }, 1000); // Save after 1 second of no typing
-      });
+    } catch (err) {
+      console.warn(`LiveCodingUnit ${this.id}: Error applying UI flags:`, err);
     }
 
-    
-    // Handle any pending samples and code now that REPL is ready
-    if (this.replInstance && this.editorInstance) {
-      console.log(`LiveCodingUnit ${this.id}: REPL ready - processing pending items`);
-      // When switching back to this unit, ensure we display the persisted code
+    // Set up code persistence listeners (avoid duplicates)
+    if (this.strudelElement) {
+      // Remove existing listeners
+      if (this._blurListener) {
+        this.strudelElement.removeEventListener('blur', this._blurListener);
+      }
+      if (this._inputListener) {
+        this.strudelElement.removeEventListener('input', this._inputListener);
+      }
+      
+      // Create new listeners
+      this._blurListener = () => this.persistCurrentCode();
+      this._inputListener = () => {
+        clearTimeout(this._persistTimeout);
+        this._persistTimeout = setTimeout(() => this.persistCurrentCode(), 1000);
+      };
+      
+      // Add listeners
+      this.strudelElement.addEventListener('blur', this._blurListener);
+      this.strudelElement.addEventListener('input', this._inputListener);
+      
+      console.log(`LiveCodingUnit ${this.id}: Code persistence listeners attached`);
+    }
+
+
+    // Process pending items and restore state when REPL is FULLY ready (not just immediate)
+    if (this.replInstance && this.editorInstance && editor?.repl) {
+      console.log(`LiveCodingUnit ${this.id}: Full REPL ready - processing pending items`);
+      
       try {
+        // Restore persisted code when switching back to this unit
         if (this.currentCode && this.currentCode !== this.basePattern) {
-          // Set the code in the editor
+          console.log(`LiveCodingUnit ${this.id}: Restoring persisted code`);
           this.editorInstance.setCode(this.currentCode);
           this.strudelElement?.setAttribute('code', this.currentCode);
         }
-      } catch (e) {
-        console.warn(`LiveCodingUnit ${this.id}: Failed to restore code on attach`, e);
-      }
-
-  // Do not auto-stop on attach; respect current playback state
-      
-      // Register samples on attach if there are pending OR any unregistered in our bank
-    const needsRegistration = this.hasPendingSamples || (this.sampleBank && this.sampleBank.size > 0);
-      if (needsRegistration) {
-        console.log(`LiveCodingUnit ${this.id}: Registering samples on attach`);
-        try {
-      // Ensure REPL is actually ready to accept samples()
-      await this._waitForReplReady(1500);
+        
+        // Register samples if we have any
+        const needsRegistration = this.hasPendingSamples || (this.sampleBank && this.sampleBank.size > 0);
+        if (needsRegistration) {
+          console.log(`LiveCodingUnit ${this.id}: Registering ${this.sampleBank.size} samples`);
+          
+          // Wait for REPL to be ready for samples
+          await this._waitForReplReady(1500);
           await this.updateStrudelSampleBank();
           this.hasPendingSamples = false;
-        } catch (e) {
-          console.warn(`LiveCodingUnit ${this.id}: Sample registration on attach failed`, e);
+          
+          console.log(`LiveCodingUnit ${this.id}: Sample registration completed`);
         }
-      }
-      
-      // Apply pending code if any
-      if (this.pendingCode) {
-        console.log(`LiveCodingUnit ${this.id}: Setting pending code:`, this.pendingCode);
-        this.setCode(this.pendingCode);
-        this.pendingCode = null;
-      }
-
-      // If we reattached to a different element and we were playing, rebind UI by re-evaluating + starting
-  if (this.isPlaying) {
-        try {
-          // Small debounce to let editor settle
+        
+        // Apply any pending code
+        if (this.pendingCode) {
+          console.log(`LiveCodingUnit ${this.id}: Applying pending code:`, this.pendingCode);
+          this.setCode(this.pendingCode);
+          this.pendingCode = null;
+        }
+        
+        // If unit was playing before, restore playback
+        if (this.isPlaying) {
+          console.log(`LiveCodingUnit ${this.id}: Restoring playback state`);
           setTimeout(async () => {
-            try { await this.ensureSamplesForCode(this.currentCode); } catch {}
-    try { await this.evaluate(); } catch {}
-    // Do not force start if already playing; evaluate restores highlighting
-    if (elementChanged) { try { this.play(); } catch {} }
-          }, 30);
-        } catch {}
+            try {
+              await this.ensureSamplesForCode(this.currentCode);
+              await this.evaluate();
+              
+              // Only restart if element changed (avoid double-start)
+              if (elementChanged) {
+                this.play();
+              }
+            } catch (err) {
+              console.warn(`LiveCodingUnit ${this.id}: Error restoring playback:`, err);
+            }
+          }, 100); // Longer delay for stability
+        }
+        
+      } catch (err) {
+        console.error(`LiveCodingUnit ${this.id}: Error during full REPL setup:`, err);
       }
+    } else if (this.replInstance && !this.editorInstance) {
+      console.log(`LiveCodingUnit ${this.id}: Immediate connection established - waiting for full editor`);
     }
   }
 
@@ -180,9 +222,11 @@ export class LiveCodingUnit extends BaseUnit {
 
   /**
    * Check if the unit is ready to receive sounds
+   * Now considers both immediate and full connections
    */
   isReadyForSounds() {
-    return !!(this.replInstance && this.editorInstance);
+    // With immediate connection, we show ready status even before full editor is available
+    return !!(this.replInstance);
   }
 
   /**
@@ -1366,7 +1410,11 @@ export class LiveCodingUnit extends BaseUnit {
     console.log(`LiveCodingUnit ${this.id}: Starting cleanup`);
     
     // Persist current code before cleanup
-    this.persistCurrentCode();
+    try {
+      this.persistCurrentCode();
+    } catch (err) {
+      console.warn(`LiveCodingUnit ${this.id}: Error persisting code during cleanup:`, err);
+    }
     
     // Clear timeout
     if (this._persistTimeout) {
@@ -1374,10 +1422,24 @@ export class LiveCodingUnit extends BaseUnit {
       this._persistTimeout = null;
     }
     
-    // Stop playback
-    this.stop();
+    // Remove event listeners
+    if (this.strudelElement) {
+      if (this._blurListener) {
+        this.strudelElement.removeEventListener('blur', this._blurListener);
+        this._blurListener = null;
+      }
+      if (this._inputListener) {
+        this.strudelElement.removeEventListener('input', this._inputListener);
+        this._inputListener = null;
+      }
+    }
     
-
+    // Stop playback
+    try {
+      this.stop();
+    } catch (err) {
+      console.warn(`LiveCodingUnit ${this.id}: Error stopping playback during cleanup:`, err);
+    }
     
     // Clear sample bank (this will revoke blob URLs)
     this.clearSampleBank();
@@ -1385,8 +1447,6 @@ export class LiveCodingUnit extends BaseUnit {
     // Clear REPL instance references
     this.replInstance = null;
     this.editorInstance = null;
-    this.uiReplInstance = null;
-    this.uiEditorInstance = null;
     this.strudelElement = null;
     
     // Clear pending items
