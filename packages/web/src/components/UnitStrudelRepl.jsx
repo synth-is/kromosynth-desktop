@@ -78,6 +78,8 @@ const UnitStrudelRepl = ({ unitId }) => {
   editorEl.style.width = '100%';
   editorEl.style.height = '100%';
   editorEl.style.visibility = 'visible';
+  editorEl.style.minWidth = '0'; // Prevent editor from forcing container expansion
+  editorEl.style.maxWidth = '100%'; // Constrain editor to container width
 
   // Ensure editor element is visible (avoid display:none while visible)
   editorEl.style.display = 'block';
@@ -229,7 +231,7 @@ const UnitStrudelRepl = ({ unitId }) => {
 
   return (
     <div
-      className="space-y-2"
+      className="space-y-2 w-full max-w-2xl"
       // Stop bubbling to parent selectors, but allow events to reach the editor/buttons
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
@@ -269,7 +271,7 @@ const UnitStrudelRepl = ({ unitId }) => {
 
       <div
         ref={containerRef}
-        className="border border-gray-600 rounded bg-gray-900 min-h-[300px] relative overflow-hidden"
+        className="border border-gray-600 rounded bg-gray-900 min-h-[300px] relative overflow-auto"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
