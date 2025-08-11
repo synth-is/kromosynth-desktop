@@ -244,8 +244,12 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
     if (strudelElement) {
       console.log(`SimpleUnitStrudelRepl ${unitId}: Using existing stable element`);
       
-      // Don't move the element! Just show it and ensure it's connected
-      strudelElement.style.display = 'block';
+  // Don't move the element! Just show it and ensure it's connected
+  strudelElement.style.display = 'block';
+  // Constrain width so long lines cause horizontal scroll instead of panel growth
+  strudelElement.style.width = 'max-content';
+  strudelElement.style.maxWidth = '100%';
+  strudelElement.style.boxSizing = 'border-box';
       
       // Make sure it's in our container (but only if it's not already there)
       if (strudelElement.parentNode !== containerRef.current) {
@@ -288,10 +292,12 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
       strudelElement.solo = false;
       strudelElement.setAttribute('data-unit-id', unitId);
       
-      // Style for stable positioning
-      strudelElement.style.width = '100%';
-      strudelElement.style.height = '100%';
-      strudelElement.style.display = 'block';
+  // Style for stable positioning (constrain width; allow horizontal scrolling in parent)
+  strudelElement.style.width = 'max-content';
+  strudelElement.style.maxWidth = '100%';
+  strudelElement.style.boxSizing = 'border-box';
+  strudelElement.style.height = '100%';
+  strudelElement.style.display = 'block';
       
       containerRef.current.appendChild(strudelElement);
       strudelElementRef.current = strudelElement;
@@ -361,7 +367,7 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
           {isPlaying ? 'Playing' : 'Stopped'} • Unit {unitId}
         </span>
       </div>
-      <div ref={containerRef} className="flex-1 min-h-[240px]" />
+  <div ref={containerRef} className="flex-1 min-h-[240px] overflow-x-auto overflow-y-hidden relative" />
     </div>
   );
 };
