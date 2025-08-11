@@ -1832,6 +1832,18 @@ return (
                       <Volume2 size={14} className="text-gray-400" />
                     </>
                   )}
+                  {unit.type === 'LIVE_CODING' && (
+                    <a
+                      href="https://strudel.cc/workshop/getting-started/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:text-blue-300 underline text-xs"
+                      title="Open Strudel documentation"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      Strudel
+                    </a>
+                  )}
                   
                   <button
                     onClick={(e) => handleRemoveUnit(e, unit.id)}
@@ -1842,22 +1854,25 @@ return (
                 </div>
                 
                 <div className="flex flex-col gap-0.5">
-                  <input
-                    type="range"
-                    min="-60"
-                    max="0"
-                    value={unit.volume}
-                    onClick={e => e.stopPropagation()}
-                    onMouseDown={e => e.stopPropagation()}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      onUpdateVolume(unit.id, Number(e.target.value));
-                    }}
-                    className="w-full h-1.5 rounded-sm appearance-none bg-gray-700 [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:appearance-none"
-                  />
-                  <div className="text-xs text-gray-400 flex justify-between">
+                  {unit.type !== 'LIVE_CODING' && (
+                    <input
+                      type="range"
+                      min="-60"
+                      max="0"
+                      value={unit.volume}
+                      onClick={e => e.stopPropagation()}
+                      onMouseDown={e => e.stopPropagation()}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        onUpdateVolume(unit.id, Number(e.target.value));
+                      }}
+                      className="w-full h-1.5 rounded-sm appearance-none bg-gray-700 [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:appearance-none"
+                    />
+                  )}
+                  <div className="text-xs text-gray-400 flex justify-between items-center">
                     <span className="text-gray-500">{unit.type}</span>
-                    <span>{unit.volume} dB</span>
+                    {unit.type !== 'LIVE_CODING' && (<span>{unit.volume} dB</span>)}
+                    {/* Docs link moved to header for LiveCoding units */}
                   </div>
                 </div>
               </div>
