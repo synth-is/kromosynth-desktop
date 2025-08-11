@@ -277,18 +277,12 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
   });
 
   const [activeTab, setActiveTab] = useState(() => {
-    // For LiveCodingUnits, default to 'Live Code' tab to auto-initialize Strudel
-    return unit.type === UNIT_TYPES.LIVE_CODING ? 'Live Code' : 'Unit';
+    // For LiveCodingUnits, always show 'Unit' since we removed tabs
+    return 'Unit';
   });
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Switch to Live Code tab when unit becomes a LiveCodingUnit
-  useEffect(() => {
-    if (unit.type === UNIT_TYPES.LIVE_CODING && activeTab === 'Unit') {
-      console.log(`Switching to Live Code tab for LiveCodingUnit ${unit.id}`);
-      setActiveTab('Live Code');
-    }
-  }, [unit.type, activeTab]);
+  // No longer need to switch tabs for LiveCodingUnit since we removed the Live Code tab
 
   const handleCodeChange = (newCode) => {
     console.log(`Code change in unit ${unit.id}:`, newCode);
@@ -360,18 +354,10 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
           </button>
           {/* Dynamic tab rendering based on unit type */}
           {unit.type === UNIT_TYPES.LIVE_CODING ? (
-            // LiveCodingUnit: Show Unit and Live Code tabs
-            ['Unit', 'Live Code'].map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-3 py-1 text-sm rounded-sm ${activeTab === tab 
-                  ? 'bg-blue-900/30 text-white' 
-                  : 'text-gray-400 hover:text-white'}`}
-              >
-                {tab}
-              </button>
-            ))
+            // LiveCodingUnit: No tabs, just show the unit name/type
+            <div className="px-3 py-1 text-sm text-white font-medium">
+              Live Coding Unit
+            </div>
           ) : (
             // Other unit types: Show Unit and Sampler tabs
             ['Unit', 'Sampler'].map(tab => (
@@ -402,7 +388,7 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
         }`}
       >
         <div className="p-4">
-          {activeTab === 'Unit' && (
+          {(activeTab === 'Unit' || unit.type === UNIT_TYPES.LIVE_CODING) && (
             <>
               {/* Show Playback section for both TrajectoryUnit and LoopingUnit */}
               {(unit.type === UNIT_TYPES.TRAJECTORY || unit.type === UNIT_TYPES.LOOPING) && (
@@ -631,6 +617,76 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
                         >
                           Debug
                         </button>
+                        <button
+                          onClick={async () => {
+                            console.log('🧪 Manual test: trying to play existing samples...');
+                            console.log('🔍 Available actualInstance properties:', Object.keys(actualInstance || {}));
+                            console.log('🔍 actualInstance.replInstance exists:', !!actualInstance?.replInstance);
+                            console.log('🔍 actualInstance.editorInstance exists:', !!actualInstance?.editorInstance);
+                            
+                            if (actualInstance && actualInstance.replInstance) {
+                              try {
+                                console.log('🧪 Using actualInstance.replInstance for test...');
+                                await actualInstance.replInstance.evaluate('s("evo_0").gain(0.5)');
+                                console.log('✅ Test evaluation sent to Strudel via replInstance');
+                              } catch (err) {
+                                console.error('❌ Test evaluation via replInstance failed:', err);
+                              }
+                            } else if (actualInstance && actualInstance.editorInstance) {
+                              try {
+                                console.log('🧪 Using actualInstance.editorInstance for test...');
+                                await actualInstance.editorInstance.repl?.evaluate('s("evo_0").gain(0.5)');
+                                console.log('✅ Test evaluation sent to Strudel via editorInstance.repl');
+                              } catch (err) {
+                                console.error('❌ Test evaluation via editorInstance.repl failed:', err);
+                              }
+                            } else {
+                              console.log('❌ No suitable REPL interface found for testing');
+                              console.log('🔍 actualInstance:', actualInstance);
+                            }
+                            
+                            // Also try to manually verify sample availability
+                            if (actualInstance) {
+                              const sampleInfo = actualInstance.getSampleBankInfo?.();
+                              console.log('🔍 Sample bank info:', sampleInfo);
+                              
+                              // Test audio analysis of current samples
+                              if (actualInstance.sampleBank && actualInstance.sampleBank.size > 0) {
+                                console.log('🧪 Testing audio content of samples in bank...');
+                                actualInstance.sampleBank.forEach((sampleData, genomeId) => {
+                                  if (sampleData.metadata?.audioBuffer) {
+                                    console.log(`🔍 Analyzing sample ${sampleData.name}:`);
+                                    actualInstance.analyzeAudioContent(sampleData.metadata.audioBuffer);
+                                  }
+                                });
+                              }
+                            }
+                          }}
+                          className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded text-white"
+                        >
+                          Test & Analyze
+                        </button>
+                        <button
+                          onClick={async () => {
+                            console.log('🧪 Adding test tone sample...');
+                            if (actualInstance && actualInstance.addTestSample) {
+                              try {
+                                const testSampleName = await actualInstance.addTestSample();
+                                console.log('✅ Test sample added:', testSampleName);
+                              } catch (err) {
+                                console.error('❌ Failed to add test sample:', err);
+                              }
+                            } else {
+                              console.log('❌ No addTestSample method available');
+                            }
+                          }}
+                          className="px-3 py-1 text-xs bg-green-600 hover:bg-green-700 rounded text-white"
+                        >
+                          Add Test Tone
+                        </button>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        Test playback & analyze audio content, or add a test tone with known audio
                       </div>
                     </div>
                   ) : (
@@ -688,93 +744,7 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
             </>
           )}
 
-          {activeTab === 'Live Code' && unit.type === UNIT_TYPES.LIVE_CODING && (
-            <div className="space-y-4">
-              {/* Quick Test Button */}
-              <div className="p-2 bg-gray-800/50 rounded border border-gray-700">
-                <div className="flex gap-2 mb-2">
-                  <button
-                    onClick={async () => {
-                      console.log('🧪 Manual test: trying to play existing samples...');
-                      console.log('🔍 Available actualInstance properties:', Object.keys(actualInstance || {}));
-                      console.log('🔍 actualInstance.replInstance exists:', !!actualInstance?.replInstance);
-                      console.log('🔍 actualInstance.editorInstance exists:', !!actualInstance?.editorInstance);
-                      
-                      if (actualInstance && actualInstance.replInstance) {
-                        try {
-                          console.log('🧪 Using actualInstance.replInstance for test...');
-                          await actualInstance.replInstance.evaluate('s("evo_0").gain(0.5)');
-                          console.log('✅ Test evaluation sent to Strudel via replInstance');
-                        } catch (err) {
-                          console.error('❌ Test evaluation via replInstance failed:', err);
-                        }
-                      } else if (actualInstance && actualInstance.editorInstance) {
-                        try {
-                          console.log('🧪 Using actualInstance.editorInstance for test...');
-                          await actualInstance.editorInstance.repl?.evaluate('s("evo_0").gain(0.5)');
-                          console.log('✅ Test evaluation sent to Strudel via editorInstance.repl');
-                        } catch (err) {
-                          console.error('❌ Test evaluation via editorInstance.repl failed:', err);
-                        }
-                      } else {
-                        console.log('❌ No suitable REPL interface found for testing');
-                        console.log('🔍 actualInstance:', actualInstance);
-                      }
-                      
-                      // Also try to manually verify sample availability
-                      if (actualInstance) {
-                        const sampleInfo = actualInstance.getSampleBankInfo?.();
-                        console.log('🔍 Sample bank info:', sampleInfo);
-                        
-                        // Test audio analysis of current samples
-                        if (actualInstance.sampleBank && actualInstance.sampleBank.size > 0) {
-                          console.log('🧪 Testing audio content of samples in bank...');
-                          actualInstance.sampleBank.forEach((sampleData, genomeId) => {
-                            if (sampleData.metadata?.audioBuffer) {
-                              console.log(`🔍 Analyzing sample ${sampleData.name}:`);
-                              actualInstance.analyzeAudioContent(sampleData.metadata.audioBuffer);
-                            }
-                          });
-                        }
-                      }
-                    }}
-                    className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded text-white"
-                  >
-                    Test & Analyze Samples
-                  </button>
-                  <button
-                    onClick={async () => {
-                      console.log('🧪 Adding test tone sample...');
-                      if (actualInstance && actualInstance.addTestSample) {
-                        try {
-                          const testSampleName = await actualInstance.addTestSample();
-                          console.log('✅ Test sample added:', testSampleName);
-                        } catch (err) {
-                          console.error('❌ Failed to add test sample:', err);
-                        }
-                      } else {
-                        console.log('❌ No addTestSample method available');
-                      }
-                    }}
-                    className="px-3 py-1 text-xs bg-green-600 hover:bg-green-700 rounded text-white"
-                  >
-                    Add Test Tone
-                  </button>
-                </div>
-                <div className="text-xs text-gray-400">
-                  Test playback & analyze audio content, or add a test tone with known audio
-                </div>
-              </div>
-              
-              {/* LiveCodingUnit configuration - REPL editor now in UnitsPanel for true isolation */}
-              <div className="space-y-4">
-                <div className="text-sm text-gray-400">
-                  Live coding editor is now displayed in the Units Panel for better isolation between units.
-                  Configure sync/solo settings below.
-                </div>
-              </div>
-            </div>
-          )}
+
         </div>
       </div>
     </div>
