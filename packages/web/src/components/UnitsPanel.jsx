@@ -1895,7 +1895,26 @@ return (
                     currentUnit.onDeselect();
                   }
                 }
+                
+                // Select the new unit
                 onSelectUnit(unit.id);
+                
+                // VISUAL FEEDBACK RESTORATION: For LiveCoding units, ensure visual feedback is restored
+                if (unit.type === UNIT_TYPES.LIVE_CODING) {
+                  setTimeout(() => {
+                    const targetUnit = unitsRef.current.get(unit.id);
+                    if (targetUnit && targetUnit.replInstance && targetUnit.currentCode && 
+                        targetUnit.currentCode.trim() && targetUnit.currentCode !== targetUnit.basePattern) {
+                      console.log(`UnitsPanel: Fallback visual feedback restoration for unit ${unit.id}`);
+                      try {
+                        targetUnit.replInstance.evaluate(targetUnit.currentCode);
+                        console.log(`✅ Fallback visual feedback restored for unit ${unit.id}`);
+                      } catch (err) {
+                        console.warn(`UnitsPanel: Fallback visual feedback restoration failed for unit ${unit.id}:`, err);
+                      }
+                    }
+                  }, 300); // Delay to allow other restoration mechanisms to complete first
+                }
               }}
               className={`bg-gray-800/50 rounded-sm p-2 cursor-pointer select-none transition-all
                 ${selectedUnitId === unit.id ? 'ring-1 ring-blue-500' : ''}`}

@@ -22,6 +22,7 @@ import DynamicStrudelTestSimple from './components/DynamicStrudelTestSimple';
 import { StrudelPatternProvider } from './components/strudelPatternContext';
 import { DEFAULT_STRUDEL_CODE, LINEAGE_SOUNDS_BUCKET_HOST, UNIT_TYPES, DEFAULT_UNIT_CONFIGS, getRestServiceHost, REST_ENDPOINTS } from './constants';
 import { UnitsProvider, useUnits } from './UnitsContext';
+import { setupVisualFeedbackMonitoring } from './utils/visualFeedbackTest';
 
 const TopBar = ({ 
   showUnits, 
@@ -447,6 +448,17 @@ function MainApp() {
   }]);
   const [playingUnits, setPlayingUnits] = useState(new Set());
   console.log('All useState hooks successful');
+
+  // Initialize visual feedback monitoring for LiveCoding units
+  useEffect(() => {
+    console.log('🎨 Initializing visual feedback monitoring...');
+    try {
+      setupVisualFeedbackMonitoring();
+      console.log('✅ Visual feedback monitoring initialized');
+    } catch (err) {
+      console.warn('⚠️ Failed to initialize visual feedback monitoring:', err);
+    }
+  }, []); // Run once on component mount
 
   // Set selectedRun to preferred default or first available experiment group after lineageTreesIndex is loaded, if not set by URL
   useEffect(() => {

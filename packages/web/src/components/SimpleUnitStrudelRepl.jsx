@@ -44,12 +44,12 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
           strudelElement.setAttribute('code', unit.currentCode);
         }
         
-        // AUTO-RESTORE VISUAL FEEDBACK: Re-evaluate if unit is playing
-        if (unit.isPlaying && unit.currentCode) {
-          console.log(`SimpleUnitStrudelRepl ${unitId}: Auto-restoring visual feedback`);
+        // AUTO-RESTORE VISUAL FEEDBACK: Re-evaluate if unit has code (regardless of playing state)
+        if (unit.currentCode && unit.currentCode.trim() && unit.currentCode !== `// Live coding unit ${unitId}`) {
+          console.log(`SimpleUnitStrudelRepl ${unitId}: Auto-restoring visual feedback for existing code`);
           setTimeout(() => {
             try {
-              // Re-evaluate to restore visual feedback
+              // Re-evaluate to restore visual feedback - this preserves Mini Notation highlighting
               strudelElement.editor.repl.evaluate(unit.currentCode);
               console.log(`✅ Visual feedback auto-restored for unit ${unitId}`);
             } catch (error) {
@@ -97,6 +97,20 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
             if (unit.currentCode) {
               strudelElement.editor.setCode(unit.currentCode);
               strudelElement.setAttribute('code', unit.currentCode);
+              
+              // AUTO-RESTORE VISUAL FEEDBACK for new elements too
+              if (unit.currentCode.trim() && unit.currentCode !== `// Live coding unit ${unitId}`) {
+                console.log(`SimpleUnitStrudelRepl ${unitId}: Auto-restoring visual feedback for new element`);
+                setTimeout(() => {
+                  try {
+                    // Re-evaluate to restore visual feedback - this preserves Mini Notation highlighting
+                    strudelElement.editor.repl.evaluate(unit.currentCode);
+                    console.log(`✅ Visual feedback auto-restored for new unit ${unitId}`);
+                  } catch (error) {
+                    console.log(`❌ Auto-restore failed for new unit ${unitId}:`, error.message);
+                  }
+                }, 200); // Slightly longer delay for new elements
+              }
             }
           }
           return;

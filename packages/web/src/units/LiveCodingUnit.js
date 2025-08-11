@@ -200,6 +200,18 @@ export class LiveCodingUnit extends BaseUnit {
           console.log(`LiveCodingUnit ${this.id}: Restoring persisted code`);
           this.editorInstance.setCode(this.currentCode);
           this.strudelElement?.setAttribute('code', this.currentCode);
+          
+          // CRITICAL: Re-evaluate to restore visual feedback (Mini Notation highlighting)
+          console.log(`LiveCodingUnit ${this.id}: Re-evaluating code to restore visual feedback`);
+          setTimeout(async () => {
+            try {
+              await this.ensureSamplesForCode(this.currentCode);
+              await this.replInstance.evaluate(this.currentCode);
+              console.log(`✅ Visual feedback restored for LiveCodingUnit ${this.id}`);
+            } catch (err) {
+              console.warn(`LiveCodingUnit ${this.id}: Error restoring visual feedback:`, err);
+            }
+          }, 150); // Small delay to ensure everything is ready
         }
         
         // Register samples if we have any (improved timing)
@@ -245,6 +257,18 @@ export class LiveCodingUnit extends BaseUnit {
               console.warn(`LiveCodingUnit ${this.id}: Error restoring playback:`, err);
             }
           }, 100); // Longer delay for stability
+        } else if (this.currentCode && this.currentCode !== this.basePattern) {
+          // Even if not playing, restore visual feedback for existing code
+          console.log(`LiveCodingUnit ${this.id}: Restoring visual feedback for non-playing unit`);
+          setTimeout(async () => {
+            try {
+              await this.ensureSamplesForCode(this.currentCode);
+              await this.replInstance.evaluate(this.currentCode);
+              console.log(`✅ Visual feedback restored for non-playing LiveCodingUnit ${this.id}`);
+            } catch (err) {
+              console.warn(`LiveCodingUnit ${this.id}: Error restoring visual feedback for non-playing unit:`, err);
+            }
+          }, 150);
         }
         
         // Trigger retry for any pending samples now that REPL is fully ready
