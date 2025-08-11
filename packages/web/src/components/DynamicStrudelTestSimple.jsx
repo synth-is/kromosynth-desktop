@@ -117,9 +117,10 @@ const DynamicStrudelTest = () => {
     const containerRef = useRef(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentPattern, setCurrentPattern] = useState(instance.pattern);
+  const [isSolo, setIsSolo] = useState(false);
 
     // Initialize REPL - exactly like StrudelReplTest
-    useEffect(() => {
+  useEffect(() => {
       if (containerRef.current && !replRef.current) {
         console.log(`ReplInstance: Initializing REPL ${instance.id}`);
         
@@ -129,6 +130,10 @@ const DynamicStrudelTest = () => {
         repl.solo = instance.solo;
         containerRef.current.appendChild(repl);
         replRef.current = repl;
+
+    // Register globally for solo coordination
+    if (!window._dynamicStrudelRepls) window._dynamicStrudelRepls = new Map();
+    window._dynamicStrudelRepls.set(instance.id, replRef);
         
         console.log(`ReplInstance: REPL ${instance.id} initialized`);
       }
@@ -138,6 +143,7 @@ const DynamicStrudelTest = () => {
         if (containerRef.current) {
           containerRef.current.innerHTML = '';
         }
+    if (window._dynamicStrudelRepls) window._dynamicStrudelRepls.delete(instance.id);
         replRef.current = null;
       };
     }, []); // Empty dependency array like StrudelReplTest
@@ -155,7 +161,15 @@ const DynamicStrudelTest = () => {
       const startThisREPL = () => {
         if (replRef.current?.editor?.repl && !isPlaying) {
           console.log(`ReplInstance: Global start triggered for REPL ${instance.id}`);
-          replRef.current.editor.toggle();
+          // Prefer explicit start() if available to avoid unintended stop
+          if (replRef.current.editor.repl.start) {
+            try { replRef.current.editor.repl.start(); } catch {}
+          } else if (replRef.current.editor.toggle) {
+            replRef.current.editor.toggle();
+          }
+          setIsPlaying(true);
+        } else if (isPlaying) {
+          // Already playing; ensure internal flag reflects it
           setIsPlaying(true);
         }
       };
@@ -178,6 +192,14 @@ const DynamicStrudelTest = () => {
         window.strudelGlobalStopFunctions = new Set();
       }
       window.strudelGlobalStopFunctions.add(stopThisREPL);
+
+  // Map id -> stop/start for targeted external control (solo logic)
+  if (!window._dynamicReplStopFns) window._dynamicReplStopFns = {};
+  if (!window._dynamicReplStartFns) window._dynamicReplStartFns = {};
+  if (!window._dynamicReplMarkPlayingFns) window._dynamicReplMarkPlayingFns = {};
+  window._dynamicReplStopFns[instance.id] = stopThisREPL;
+  window._dynamicReplStartFns[instance.id] = startThisREPL;
+  window._dynamicReplMarkPlayingFns[instance.id] = () => setIsPlaying(true);
 
       // Register global start function
       if (!window.strudelGlobalStartFunctions) {
@@ -276,6 +298,9 @@ const DynamicStrudelTest = () => {
         if (window.strudelGlobalRestartFunctions) {
           window.strudelGlobalRestartFunctions.delete(restartIfWasPlaying);
         }
+  if (window._dynamicReplStopFns) delete window._dynamicReplStopFns[instance.id];
+  if (window._dynamicReplStartFns) delete window._dynamicReplStartFns[instance.id];
+  if (window._dynamicReplMarkPlayingFns) delete window._dynamicReplMarkPlayingFns[instance.id];
       };
     }, [instance.id, isPlaying]);
 
@@ -294,6 +319,132 @@ const DynamicStrudelTest = () => {
         setIsPlaying(false);
         console.log(`DynamicStrudelTest: Stopped REPL ${instance.id}`);
       }
+    };
+
+    const handleSolo = () => {
+      const newSolo = !isSolo;
+      if (newSolo) {
+        // Record and stop others
+        // Prefer authoritative global playing states if available
+        let prevStates = [];
+        if (window.strudelGlobalGetPlayingStates) {
+          try { prevStates = window.strudelGlobalGetPlayingStates(); } catch {}
+        }
+        const recorded = [];
+        if (window._dynamicStrudelRepls) {
+          window._dynamicStrudelRepls.forEach((otherRef, otherId) => {
+            if (otherId === instance.id) return;
+            const el = otherRef.current;
+            if (!el) return;
+            const state = prevStates.find(s => s.id === otherId);
+            const wasPlaying = state ? !!state.isPlaying : !!el.editor?.repl?.isPlaying;
+            recorded.push({ id: otherId, wasPlaying });
+            if (wasPlaying) {
+              // Prefer mapped stop fn to also update React state
+              try {
+                if (window._dynamicReplStopFns && window._dynamicReplStopFns[otherId]) {
+                  window._dynamicReplStopFns[otherId]();
+                } else {
+                  el.editor?.repl?.stop?.();
+                }
+              } catch {}
+            }
+            el.solo = false;
+            if (el.editor?.repl) {
+              try { el.editor.repl.solo = false; } catch {}
+            }
+          });
+        }
+        // Store the correctly shaped recorded states (with wasPlaying) for restoration
+        replRef.current._prevStates = recorded;
+        console.log('[Solo] Stored previous states for restore:', recorded);
+        window._dynamicSoloReplId = instance.id;
+      } else {
+        // Restore others if we have previous states
+        if (replRef.current?._prevStates && window._dynamicStrudelRepls) {
+          // Build current playing map to avoid double toggles
+            let currentStates = [];
+            if (window.strudelGlobalGetPlayingStates) {
+              try { currentStates = window.strudelGlobalGetPlayingStates(); } catch {}
+            }
+            console.log('[SoloRestore] Stored prevStates to process:', replRef.current._prevStates);
+            replRef.current._prevStates.forEach((entry) => {
+              const id = entry.id;
+              const wasPlaying = entry.wasPlaying !== undefined ? entry.wasPlaying : entry.isPlaying;
+              const otherRef = window._dynamicStrudelRepls.get(id);
+              const el = otherRef?.current;
+              if (!el) return;
+              el.solo = false;
+              // Determine current playing via live repl object, not cached state list that may be stale
+              const isCurrentlyPlaying = !!el.editor?.repl?.isPlaying;
+              console.log(`[SoloRestore] REPL ${id} wasPlaying=${wasPlaying} isCurrentlyPlaying=${isCurrentlyPlaying}`);
+              if (wasPlaying && !isCurrentlyPlaying) {
+                console.log(`[SoloRestore] Attempting restart for REPL ${id}`);
+                let started = false;
+                try {
+                  if (el.editor?.repl?.start) {
+                    el.editor.repl.start();
+                    started = true;
+                    console.log(`[SoloRestore] start() used for REPL ${id}`);
+                    try { window._dynamicReplMarkPlayingFns && window._dynamicReplMarkPlayingFns[id] && window._dynamicReplMarkPlayingFns[id](); } catch {}
+                  }
+                } catch (e) {
+                  console.warn(`[SoloRestore] start() failed for REPL ${id}:`, e.message);
+                }
+                if (!started) {
+                  try {
+                    if (el.editor?.toggle) {
+                      el.editor.toggle();
+                      started = true;
+                      console.log(`[SoloRestore] toggle() fallback used for REPL ${id}`);
+                      try { window._dynamicReplMarkPlayingFns && window._dynamicReplMarkPlayingFns[id] && window._dynamicReplMarkPlayingFns[id](); } catch {}
+                    }
+                  } catch (e) {
+                    console.warn(`[SoloRestore] toggle() failed for REPL ${id}:`, e.message);
+                  }
+                }
+                if (!started) {
+                  // Last resort: re-evaluate code then try start again after a tick
+                  try {
+                    const code = el.editor?.code || el.getAttribute('code');
+                    if (code && el.editor?.repl?.evaluate) {
+                      el.editor.repl.evaluate(code);
+                      console.log(`[SoloRestore] evaluate() fallback for REPL ${id}`);
+                    }
+                    setTimeout(() => {
+                      try {
+                        if (el.editor?.repl?.start) {
+                          el.editor.repl.start();
+                          console.log(`[SoloRestore] delayed start() succeeded for REPL ${id}`);
+                          try { window._dynamicReplMarkPlayingFns && window._dynamicReplMarkPlayingFns[id] && window._dynamicReplMarkPlayingFns[id](); } catch {}
+                        } else if (el.editor?.toggle) {
+                          el.editor.toggle();
+                          console.log(`[SoloRestore] delayed toggle() succeeded for REPL ${id}`);
+                          try { window._dynamicReplMarkPlayingFns && window._dynamicReplMarkPlayingFns[id] && window._dynamicReplMarkPlayingFns[id](); } catch {}
+                        }
+                      } catch (e2) {
+                        console.warn(`[SoloRestore] delayed restart failed for REPL ${id}:`, e2.message);
+                      }
+                    }, 120);
+                  } catch (e) {
+                    console.warn(`[SoloRestore] evaluate+delayed start fallback failed for REPL ${id}:`, e.message);
+                  }
+                }
+              }
+              if (el.editor?.repl) {
+                try { el.editor.repl.solo = false; } catch {}
+              }
+            });
+          }
+        replRef.current._prevStates = null;
+        window._dynamicSoloReplId = null;
+      }
+      setIsSolo(newSolo);
+      if (replRef.current) {
+        replRef.current.solo = newSolo;
+        try { replRef.current.editor?.repl && (replRef.current.editor.repl.solo = newSolo); } catch {}
+      }
+      console.log(`DynamicStrudelTest: REPL ${instance.id} solo =>`, newSolo);
     };
 
     const applyRandomPattern = () => {
@@ -327,6 +478,15 @@ const DynamicStrudelTest = () => {
         />
         
         <div className="flex gap-2">
+          <button
+            onClick={handleSolo}
+            className={`px-3 py-1 rounded text-sm font-semibold ${
+              isSolo ? 'bg-yellow-400 text-gray-900 hover:bg-yellow-300' : 'bg-gray-300 text-gray-700 hover:bg-gray-400'
+            }`}
+            title="Solo"
+          >
+            S
+          </button>
           <button
             onClick={handleToggle}
             className={`px-3 py-1 rounded text-sm ${
