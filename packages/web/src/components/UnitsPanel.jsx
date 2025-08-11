@@ -1873,7 +1873,7 @@ return (
 
   return (
     <div 
-      className="h-fit max-h-[calc(100vh-5rem)] bg-gray-900/95 backdrop-blur border-r border-gray-800 overflow-y-auto"
+      className="units-panel h-fit max-h-[calc(100vh-5rem)] bg-gray-900/95 backdrop-blur border-r border-gray-800 overflow-y-auto w-[300px] shrink-0"
       data-selected-unit-id={selectedUnitId}
       data-selected-unit-type={units.find(u => u.id === selectedUnitId)?.type}
     >
