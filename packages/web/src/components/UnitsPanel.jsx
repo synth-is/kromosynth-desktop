@@ -7,7 +7,7 @@ import { LoopingUnit } from '../units/LoopingUnit';
 import { LiveCodingUnit } from '../units/LiveCodingUnit';
 import { CellDataFormatter } from '../utils/CellDataFormatter';
 import { useUnits } from '../UnitsContext';
-import UnitStrudelReplFixed from './UnitStrudelReplFixed';
+import UnitStrudelRepl from './UnitStrudelRepl';
 // Removed LiveCodingInitializer - using direct REPL creation instead
 // import LiveCodingInitializer from './LiveCodingInitializer';
 
@@ -1351,7 +1351,7 @@ return (
         {/* Dead simple REPL - no complex bridging */}
         <div className="border-t border-gray-700 pt-2">
           <div className="text-xs text-gray-400 mb-2 px-2">Live Code Editor</div>
-          <UnitStrudelReplFixed unitId={unit.id} />
+          <UnitStrudelRepl unitId={unit.id} />
         </div>
       </div>
     );
