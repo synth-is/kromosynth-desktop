@@ -2,10 +2,34 @@ import { UNIT_TYPES } from '../constants';
 import { BaseUnit } from './BaseUnit';
 import SoundRenderer from '../utils/SoundRenderer';
 
+// ---------------------------------------------------------------------------
+// Short Unit ID Helper
+// Provides stable, compact aliases (u1, u2, ...) for verbose internal ids.
+// These are used to build shorter sample names (u1_s0) instead of
+// the previous verbose pattern (unit<id>_evo_<n>). Mapping is kept
+// module-local; not exported to avoid accidental external coupling.
+// ---------------------------------------------------------------------------
+const _unitAliasMap = new Map();
+function getShortUnitId(originalId) {
+  if (_unitAliasMap.has(originalId)) return _unitAliasMap.get(originalId);
+  const alias = 'u' + (_unitAliasMap.size + 1);
+  _unitAliasMap.set(originalId, alias);
+  return alias;
+}
+
 export class LiveCodingUnit extends BaseUnit {
   constructor(id) {
     super(id, UNIT_TYPES.LIVE_CODING);
     
+    // Assign a short, human-friendly unit alias (u1, u2, ...)
+    // Global maps (module scope) ensure stable aliases across instances
+    if (typeof getShortUnitId === 'function') {
+      this.shortUnitId = getShortUnitId(id);
+    } else {
+      // Fallback in unlikely case helper not defined yet
+      this.shortUnitId = 'u' + id;
+    }
+
     // Strudel REPL instance (will be set when editor is ready)
     this.replInstance = null;
     this.editorInstance = null;
@@ -386,8 +410,9 @@ export class LiveCodingUnit extends BaseUnit {
       throw new Error('Missing genomeId in cellData');
     }
 
-    // Create a unique sample name with unit ID to ensure no conflicts
-    const sampleName = `unit${this.id}_evo_${this.sampleCounter++}`;
+  // Create a concise unique sample name: u<unitIndex>_s<seq>
+  // (replaces older verbose unit<id>_evo_<n> scheme)
+  const sampleName = `${this.shortUnitId}_s${this.sampleCounter++}`;
     
     // Default render parameters
     const finalRenderParams = {
@@ -875,8 +900,8 @@ export class LiveCodingUnit extends BaseUnit {
       const blobUrl = await this.audioBufferToBlobUrl(testAudioBuffer);
       
       // Add to sample bank with fake genome ID
-      const testGenomeId = 'test_tone_' + Date.now();
-      const sampleName = `unit${this.id}_test_${this.sampleCounter++}`;
+  const testGenomeId = 'test_tone_' + Date.now();
+  const sampleName = `${this.shortUnitId}_test_${this.sampleCounter++}`;
       
       this.sampleBank.set(testGenomeId, {
         name: sampleName,
