@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, Square } from 'lucide-react';
+import { Play, Square, RefreshCw } from 'lucide-react';
 import '@strudel/repl';
 
 // GLOBAL VISUAL FEEDBACK RESTORATION
@@ -232,6 +232,23 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
     }
   };
 
+  const handleUpdate = () => {
+    const unit = getUnit();
+    if (unit && unit.type === 'LIVE_CODING') {
+      const wasPlaying = !!unit.isPlaying;
+      try { unit.evaluate(); } catch (e) { console.warn('Update evaluate failed', e); }
+      if (!wasPlaying) {
+        try { unit.stop(); unit.replInstance?.hush?.(); } catch {}
+      }
+      return;
+    }
+    const repl = strudelElementRef.current?.editor?.repl;
+    if (repl) {
+      const code = strudelElementRef.current.editor?.code;
+      try { repl.stop?.(); repl.evaluate(code); if (!isPlaying) { repl.stop?.(); repl.hush?.(); } } catch (e) { console.warn('Direct update failed', e); }
+    }
+  };
+
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -363,8 +380,11 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
         <button onClick={handleStop} disabled={!isPlaying} title="Stop" className={`p-1.5 rounded ${!isPlaying ? 'bg-gray-700 text-gray-500' : 'bg-red-600 hover:bg-red-700 text-white'} transition-colors`}>
           <Square size={14} />
         </button>
+        <button onClick={handleUpdate} title="Update (⌘⏎)" className="p-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white transition-colors">
+          <RefreshCw size={14} />
+        </button>
         <span className="text-xs text-gray-400 px-2 truncate">
-          {isPlaying ? 'Playing' : 'Stopped'} • Unit {unitId}
+          {isPlaying ? 'Playing' : 'Stopped'} • {unitId}
         </span>
       </div>
   <div ref={containerRef} className="flex-1 min-h-[240px] overflow-x-auto overflow-y-hidden relative" />

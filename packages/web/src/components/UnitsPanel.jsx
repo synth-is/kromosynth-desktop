@@ -561,6 +561,25 @@ export default function UnitsPanel({
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [selectedUnitId, recordingStatus]);
 
+  // Live coding evaluate shortcut (Cmd/Ctrl + Enter)
+  useEffect(() => {
+    const handleEvaluateShortcut = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        const unit = unitsRef.current.get(selectedUnitId);
+        if (unit && unit.type === UNIT_TYPES.LIVE_CODING) {
+          const wasPlaying = !!unit.isPlaying;
+          try { unit.evaluate(); } catch (err) { console.warn('Shortcut evaluate failed', err); }
+          if (!wasPlaying) {
+            try { unit.stop(); unit.replInstance?.hush?.(); } catch {}
+          }
+          e.preventDefault();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleEvaluateShortcut);
+    return () => window.removeEventListener('keydown', handleEvaluateShortcut);
+  }, [selectedUnitId]);
+
 const ParameterSection = ({ title, children }) => (
   <div className="mt-2">
     <h3 className="text-xs text-gray-400 mb-1">{title}</h3>
@@ -1264,150 +1283,9 @@ return (
           ))}
         </div>
 
-        {/* Playback Controls */}
-        <div className="flex items-center gap-2 px-2 py-1 bg-gray-700/50 rounded-sm">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              liveCodingUnit.toggle();
-            }}
-            className={`px-2 py-1 text-xs rounded ${
-              liveCodingUnit.isPlaying
-                ? 'bg-yellow-600 text-white'
-                : 'bg-green-600 text-white'
-            }`}
-          >
-            {liveCodingUnit.isPlaying ? 'Stop' : 'Play'}
-          </button>
-          
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              liveCodingUnit.evaluate();
-            }}
-            className="px-2 py-1 text-xs rounded bg-blue-600 text-white"
-          >
-            Update
-          </button>
-          
-          {/* TEMPORARY: Test button for manually adding a sound */}
-          <button
-            onClick={async (e) => {
-              e.stopPropagation();
-              
-              try {
-                console.log('Fetching real genome data...');
-                
-                // First, get list of available genomes from our file server
-                const genomesResponse = await fetch('http://localhost:3005/genomes');
-                if (!genomesResponse.ok) {
-                  throw new Error('Genome server not running. Start it with: node genome-server.js');
-                }
-                
-                const genomesData = await genomesResponse.json();
-                if (!genomesData.success || genomesData.genomes.length === 0) {
-                  throw new Error('No genomes available');
-                }
-                
-                // Pick a random genome for testing
-                const randomGenome = genomesData.genomes[Math.floor(Math.random() * genomesData.genomes.length)];
-                
-                // Create test cell data with real genome info
-                const testCellData = {
-                  genomeId: randomGenome.genomeId,
-                  experiment: 'test-experiment', 
-                  evoRunId: randomGenome.evoRunId,
-                  duration: 2 + Math.random() * 3, // Random duration 2-5 seconds
-                  noteDelta: Math.floor(Math.random() * 24) - 12, // Random pitch -12 to +12
-                  velocity: 0.5 + Math.random() * 0.5, // Random velocity 0.5-1.0
-                  // Store the genome URL for the SoundRenderer
-                  genomeUrl: randomGenome.url
-                };
-                
-                console.log('Using real genome data for test:', testCellData);
-                console.log('Genome file URL:', randomGenome.url);
-                
-                const result = await liveCodingUnit.addSoundToBank(testCellData);
-                console.log('Successfully added real sound:', result);
-                
-                if (result.strudelRegistered) {
-                  alert(`Successfully added real sound: ${result.sampleName}\n\nGenome: ${randomGenome.genomeId}\nFile: ${randomGenome.fileName}\n\n✅ Registered with Strudel - ready to play!`);
-                } else {
-                  alert(`Sound added to bank: ${result.sampleName}\n\nGenome: ${randomGenome.genomeId}\nFile: ${randomGenome.fileName}\n\n⚠️ Not yet registered with Strudel\n\nTo complete setup:\n1. Click on this unit to open config panel\n2. Go to 'Live Code' tab\n3. Wait for Strudel editor to load\n4. Samples will be auto-registered`);
-                }
-                
-              } catch (error) {
-                console.error('Failed to add real genome sound:', error);
-                
-                // Fallback to hover data if available
-                if (window._lastCellData) {
-                  try {
-                    console.log('Falling back to last hover data...');
-                    const fallbackData = {
-                      ...window._lastCellData,
-                      duration: 2,
-                      noteDelta: 0,
-                      velocity: 0.8
-                    };
-                    
-                    const result = await liveCodingUnit.addSoundToBank(fallbackData);
-                    alert(`WebSocket render failed, but used hover data instead: ${result.sampleName}\n\nOriginal error: ${error.message}\n\n${result.strudelRegistered ? '✅ Registered with Strudel' : '⚠️ Open config panel to complete Strudel setup'}`);
-                  } catch (fallbackError) {
-                    alert(`Both real genome and hover data failed:\n\n1. Real genome: ${error.message}\n2. Hover data: ${fallbackError.message}\n\nSolutions:\n1. Start WebSocket rendering service\n2. Or hover over a sound in the tree first`);
-                  }
-                } else {
-                  alert(`WebSocket rendering failed: ${error.message}\n\nPossible solutions:\n1. Start the WebSocket rendering service on ws://localhost:3000\n2. Hover over a sound in the tree to test with hover data\n3. Check if genome file format is compatible\n\nThe genome was successfully fetched, but rendering timed out.`);
-                }
-              }
-            }}
-            className="px-2 py-1 text-xs rounded bg-purple-600 text-white"
-          >
-            Test Add Real
-          </button>
-          
-          <span className="text-xs text-gray-400 ml-auto">
-            Sync: {unit.sync ? 'On' : 'Off'}
-          </span>
-        </div>
-
-        {/* Instructions */}
-        <div className="text-xs text-gray-500 italic px-2">
-          {liveCodingUnit.replInstance ? (
-            'Double-click sounds in the tree to add them. Click Play/Update to hear your patterns!'
-          ) : (
-            'Double-click sounds to add them. Then open config panel → Live Code tab to complete setup.'
-          )}
-        </div>
+  {/* Minimal instructions removed to keep panel compact; controls in editor header */}
         
-        {/* Genome Server Status */}
-        <div className="text-xs px-2 pt-1 border-t border-gray-700">
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400">Genome Server:</span>
-            <button
-              onClick={async (e) => {
-                e.stopPropagation();
-                try {
-                  const response = await fetch('http://localhost:3005/health');
-                  const data = await response.json();
-                  alert(`Genome Server Status: OK\n\nPort: ${data.port}\nPath: ${data.evoRunPath.split('/').pop()}\nTime: ${data.timestamp}`);
-                } catch (error) {
-                  alert(`Genome Server Status: OFFLINE\n\nError: ${error.message}\n\nTo start the server:\n1. Run: npm install\n2. Run: npm run genome-server\n3. Or: node genome-server.js`);
-                }
-              }}
-              className="px-1.5 py-0.5 text-xs rounded bg-gray-600/50 text-white hover:bg-gray-600"
-            >
-              Check
-            </button>
-          </div>
-        </div>
-        
-        {/* Debug info for testing */}
-        <div className="text-xs text-gray-600 px-2 pt-1 border-t border-gray-700">
-          <div>Unit ID: {unit.id}</div>
-          <div>Last hover: {window._lastCellData ? window._lastCellData.genomeId?.slice(-6) : 'none'}</div>
-          <div>Instance: {liveCodingUnit ? '✓' : '✗'}</div>
-          <div>REPL: {liveCodingUnit?.replInstance ? '✓' : '✗'}</div>
-        </div>
+  {/* Removed verbose debug info section to reduce clutter */}
 
         {/* Dead simple REPL - no complex bridging */}
         <div className="border-t border-gray-700 pt-2">
