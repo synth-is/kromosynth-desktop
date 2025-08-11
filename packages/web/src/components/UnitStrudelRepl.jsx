@@ -3,11 +3,9 @@ import { Play, Square } from 'lucide-react';
 import '@strudel/repl';
 
 /**
- * UnitStrudelRepl (Version 4 - In-Place Local Editor)
- * Simplified: create the <strudel-editor> directly inside the unit container (no overlay positioning).
- * Rationale: Overlay positioning proved unreliable in this environment. Creating in-place preserves
- * CodeMirror + highlighting (only moving after init caused breakage). Hidden initializer instance for
- * this unit becomes redundant; we prefer the local editor and re-bind the unit to it.
+ * UnitStrudelRepl (Version 4 - In-Place Local Editor with Persistence)
+ * Improved: Maintains REPL instance even when component unmounts to prevent context loss
+ * Rationale: Sample registration fails when REPL contexts are destroyed during unit switching.
  */
 const UnitStrudelRepl = ({ unitId }) => {
   const containerRef = useRef(null);
@@ -15,11 +13,39 @@ const UnitStrudelRepl = ({ unitId }) => {
   const cleanupRef = useRef([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentCode, setCurrentCode] = useState('');
-  const [version] = useState('v4-inplace');
+  const [version] = useState('v4-inplace-persistent');
+  const persistentInstanceRef = useRef(null); // Store instance across unmounts
 
   useEffect(() => {
     console.log(`[UnitStrudelRepl ${unitId}] Mount (${version}) creating local editor in-place`);
     if (!containerRef.current) return;
+
+    // Check if we have a persistent instance for this unit
+    const globalInstanceKey = `strudelInstance_${unitId}`;
+    if (window[globalInstanceKey] && persistentInstanceRef.current !== window[globalInstanceKey]) {
+      console.log(`[UnitStrudelRepl ${unitId}] Reusing persistent REPL instance`);
+      
+      // Reuse existing instance
+      const existingElement = window[globalInstanceKey];
+      if (existingElement && existingElement.parentNode) {
+        existingElement.parentNode.removeChild(existingElement);
+      }
+      
+      containerRef.current.appendChild(existingElement);
+      editorElementRef.current = existingElement;
+      persistentInstanceRef.current = existingElement;
+      
+      // Reconnect to unit
+      const unit = window.getUnitInstance?.(unitId);
+      if (unit && unit.type === 'LIVE_CODING' && existingElement.editor?.repl) {
+        console.log(`[UnitStrudelRepl ${unitId}] Reconnecting persistent instance to unit`);
+        unit.setReplInstance(existingElement.editor, existingElement);
+        setIsPlaying(!!unit.isPlaying);
+        setCurrentCode(unit.currentCode || existingElement.editor.code || '');
+      }
+      
+      return; // Don't create new instance
+    }
 
     // Ensure highlighting preference ON before creation
     try {
@@ -46,6 +72,11 @@ const UnitStrudelRepl = ({ unitId }) => {
     });
     containerRef.current.appendChild(el);
     editorElementRef.current = el;
+    persistentInstanceRef.current = el;
+    
+    // Store globally for persistence
+    window[globalInstanceKey] = el;
+    console.log(`[UnitStrudelRepl ${unitId}] Created and stored persistent REPL instance`);
 
     let cancelled = false;
     const readyStart = performance.now();
@@ -68,7 +99,7 @@ const UnitStrudelRepl = ({ unitId }) => {
         } else {
           setCurrentCode(el.editor.code || '');
         }
-        // Remove any duplicate editors that might have been created earlier (hidden initializer etc.)
+        // Remove any duplicate editors that might have been created earlier
         try {
           const all = Array.from(document.querySelectorAll(`strudel-editor[data-unit-id='${unitId}']`));
           all.forEach(other => {
@@ -96,7 +127,8 @@ const UnitStrudelRepl = ({ unitId }) => {
       cancelled = true;
       cleanupRef.current.forEach(fn => { try { fn(); } catch {} });
       cleanupRef.current = [];
-      // Do not remove element; allow React unmount cleanup to handle if unit removed
+      // Do NOT remove persistent element - keep it in global store
+      console.log(`[UnitStrudelRepl ${unitId}] Component unmounting, but preserving REPL instance`);
     };
   }, [unitId, version]);
 
@@ -152,8 +184,12 @@ const UnitStrudelRepl = ({ unitId }) => {
   };
 
   useEffect(() => {
-    window[`updateUnit${unitId}`] = updateCode;
-    return () => { delete window[`updateUnit${unitId}`]; };
+  window[`updateUnit${unitId}`] = updateCode;
+  console.log(`[UnitStrudelRepl ${unitId}] Registered global update method: updateUnit${unitId}`);
+    return () => { 
+      delete window[`updateUnit${unitId}`];
+      console.log(`[UnitStrudelRepl ${unitId}] Unregistered global update method: updateUnit${unitId}`);
+    };
   }, [unitId]);
 
   return (

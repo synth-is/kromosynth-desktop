@@ -7,7 +7,7 @@ import { LoopingUnit } from '../units/LoopingUnit';
 import { LiveCodingUnit } from '../units/LiveCodingUnit';
 import { CellDataFormatter } from '../utils/CellDataFormatter';
 import { useUnits } from '../UnitsContext';
-import UnitStrudelRepl from './UnitStrudelRepl';
+import UnitStrudelRepl from './SimpleUnitStrudelRepl';
 // Removed LiveCodingInitializer - using direct REPL creation instead
 // import LiveCodingInitializer from './LiveCodingInitializer';
 
@@ -301,21 +301,47 @@ export default function UnitsPanel({
       return selectedUnitId;
     };
     
+    // Improved debugging with coordination status
     window.debugLiveCodingIsolation = () => {
       const liveCodingUnits = [];
+      
+      // Get units from both local ref and global registry
+      const localUnits = [];
       unitsRef.current.forEach((unitInstance, unitId) => {
         if (unitInstance.type === UNIT_TYPES.LIVE_CODING) {
+          localUnits.push({ source: 'local', unitId, unit: unitInstance });
+        }
+      });
+      
+      const globalUnits = [];
+      if (window._liveCodingUnits) {
+        window._liveCodingUnits.forEach((unitInstance, unitId) => {
+          globalUnits.push({ source: 'global', unitId, unit: unitInstance });
+        });
+      }
+      
+      // Combine and get debug info
+      const allSources = [...localUnits, ...globalUnits];
+      const seenIds = new Set();
+      
+      allSources.forEach(({ source, unitId, unit }) => {
+        if (!seenIds.has(unitId)) {
+          seenIds.add(unitId);
           liveCodingUnits.push({
             unitId,
-            debugInfo: unitInstance.getIsolationDebugInfo()
+            source,
+            debugInfo: unit.getIsolationDebugInfo()
           });
         }
       });
       
       console.group('🔍 LiveCoding Unit Isolation Debug');
       console.log('Total LiveCoding units:', liveCodingUnits.length);
-      liveCodingUnits.forEach(({ unitId, debugInfo }) => {
-        console.group(`Unit ${unitId}`);
+      console.log('Global registry size:', window._liveCodingUnits?.size || 0);
+      console.log('Local units ref size:', localUnits.length);
+      
+      liveCodingUnits.forEach(({ unitId, source, debugInfo }) => {
+        console.group(`Unit ${unitId} (${source})`);
         console.table(debugInfo);
         console.groupEnd();
       });
@@ -333,6 +359,41 @@ export default function UnitsPanel({
       
       console.groupEnd();
       return liveCodingUnits;
+    };
+    
+    // Add coordination debugging (simplified)
+    window.debugLiveCodingCoordination = () => {
+      console.group('🎵 LiveCoding Status Debug');
+      
+      if (!window._liveCodingUnits) {
+        console.log('❌ Global registry not found');
+        console.groupEnd();
+        return;
+      }
+      
+      const units = Array.from(window._liveCodingUnits.entries());
+      console.log(`Total registered units: ${units.length}`);
+      
+      const playingUnits = units.filter(([id, unit]) => unit.isPlaying);
+      
+      console.log(`Playing units: ${playingUnits.length}`);
+      
+      units.forEach(([id, unit]) => {
+        console.log(`Unit ${id}: playing=${unit.isPlaying}, ready=${unit.isReadyForSounds()}, samples=${unit.sampleBank?.size || 0}`);
+      });
+      
+      console.groupEnd();
+      return { total: units.length, playing: playingUnits.length };
+    };
+    
+    // Better unit instance access
+    window.getLiveCodingUnit = (unitId) => {
+      // Try global registry first
+      if (window._liveCodingUnits?.has(unitId)) {
+        return window._liveCodingUnits.get(unitId);
+      }
+      // Fallback to local ref
+      return unitsRef.current.get(unitId);
     };
     
     // Add event listener for unit config updates from LiveCodingUnits
@@ -1890,11 +1951,19 @@ return (
                   </div>
                 </div>
               </div>
+              
+              {/* Always show LiveCoding REPL to prevent audio context loss */}
+              {unit.type === UNIT_TYPES.LIVE_CODING && (
+                <div onClick={(e) => e.stopPropagation()}>
+                  {renderLiveCodingControls(unit)}
+                </div>
+              )}
+              
+              {/* Show other controls only when selected */}
               {unit.id === selectedUnitId && (
                 <div onClick={(e) => e.stopPropagation()}>
                   {renderTrajectoryControls(unit)}
                   {renderLoopingControls(unit)}
-                  {renderLiveCodingControls(unit)}
                   {unit.type === UNIT_TYPES.SEQUENCING && renderSequenceControls(unit)}
                 </div>
               )}

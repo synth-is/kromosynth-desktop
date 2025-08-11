@@ -44,11 +44,33 @@ export class LiveCodingUnit extends BaseUnit {
   // Wait until REPL context is fully ready (context + samples function)
   async _waitForReplReady(timeoutMs = 2000, intervalMs = 40) {
     const start = Date.now();
+    console.log(`LiveCodingUnit ${this.id}: Waiting for REPL context to be ready...`);
+    
     while (Date.now() - start < timeoutMs) {
-      const ctx = this.replInstance?.context;
-      if (ctx && typeof ctx.samples === 'function') return true;
+      // More thorough context readiness check
+      const hasInstance = !!this.replInstance;
+      const hasContext = !!this.replInstance?.context;
+      const hasSamplesFunction = typeof this.replInstance?.context?.samples === 'function';
+      const hasValidContext = hasContext && this.replInstance.context !== undefined;
+      
+      // TEMPORARILY DISABLED: console.log(`LiveCodingUnit ${this.id}: REPL readiness check:`, {
+      //   hasInstance,
+      //   hasContext,
+      //   hasSamplesFunction,
+      //   hasValidContext,
+      //   contextType: typeof this.replInstance?.context,
+      //   elapsed: Date.now() - start
+      // });
+      
+      if (hasInstance && hasValidContext && hasSamplesFunction) {
+        console.log(`LiveCodingUnit ${this.id}: REPL context ready after ${Date.now() - start}ms`);
+        return true;
+      }
+      
       await new Promise(r => setTimeout(r, intervalMs));
     }
+    
+    console.warn(`LiveCodingUnit ${this.id}: REPL context not ready after ${timeoutMs}ms`);
     return !!(this.replInstance?.context);
   }
 
@@ -57,11 +79,35 @@ export class LiveCodingUnit extends BaseUnit {
       console.log(`Initializing LiveCodingUnit ${this.id}`);
       await super.initialize();
       
+      // Register this unit globally for coordination
+      this._registerGlobally();
+      
       console.log(`LiveCodingUnit ${this.id} initialized successfully`);
       return true;
     } catch (err) {
       console.error(`LiveCodingUnit ${this.id} initialization error:`, err);
       return false;
+    }
+  }
+
+  /**
+   * Register this unit in global registry for coordination
+   */
+  _registerGlobally() {
+    if (!window._liveCodingUnits) {
+      window._liveCodingUnits = new Map();
+    }
+    window._liveCodingUnits.set(this.id, this);
+    console.log(`LiveCodingUnit ${this.id}: Registered globally. Total units: ${window._liveCodingUnits.size}`);
+  }
+
+  /**
+   * Unregister this unit from global registry
+   */
+  _unregisterGlobally() {
+    if (window._liveCodingUnits) {
+      window._liveCodingUnits.delete(this.id);
+      console.log(`LiveCodingUnit ${this.id}: Unregistered globally. Remaining units: ${window._liveCodingUnits.size}`);
     }
   }
 
@@ -156,17 +202,24 @@ export class LiveCodingUnit extends BaseUnit {
           this.strudelElement?.setAttribute('code', this.currentCode);
         }
         
-        // Register samples if we have any
+        // Register samples if we have any (improved timing)
         const needsRegistration = this.hasPendingSamples || (this.sampleBank && this.sampleBank.size > 0);
         if (needsRegistration) {
-          console.log(`LiveCodingUnit ${this.id}: Registering ${this.sampleBank.size} samples`);
+          console.log(`LiveCodingUnit ${this.id}: Registering ${this.sampleBank.size} samples...`);
           
-          // Wait for REPL to be ready for samples
-          await this._waitForReplReady(1500);
-          await this.updateStrudelSampleBank();
-          this.hasPendingSamples = false;
+          // Wait for REPL to be ready for samples with longer timeout
+          const replReady = await this._waitForReplReady(3000); // Increased timeout
+          if (!replReady) {
+            console.warn(`LiveCodingUnit ${this.id}: REPL context not ready after 3s, but continuing...`);
+          }
           
-          console.log(`LiveCodingUnit ${this.id}: Sample registration completed`);
+          const registrationSuccess = await this.updateStrudelSampleBank();
+          if (registrationSuccess) {
+            this.hasPendingSamples = false;
+            console.log(`LiveCodingUnit ${this.id}: Sample registration completed successfully`);
+          } else {
+            console.warn(`LiveCodingUnit ${this.id}: Sample registration failed, will retry later`);
+          }
         }
         
         // Apply any pending code
@@ -194,6 +247,12 @@ export class LiveCodingUnit extends BaseUnit {
           }, 100); // Longer delay for stability
         }
         
+        // Trigger retry for any pending samples now that REPL is fully ready
+        if (this.hasPendingSamples) {
+          console.log(`LiveCodingUnit ${this.id}: REPL now ready, triggering immediate sample registration retry`);
+          setTimeout(() => this._retryPendingSampleRegistration(), 500);
+        }
+        
       } catch (err) {
         console.error(`LiveCodingUnit ${this.id}: Error during full REPL setup:`, err);
       }
@@ -218,6 +277,68 @@ export class LiveCodingUnit extends BaseUnit {
     } catch (err) {
       console.error(`LiveCodingUnit ${this.id}: Error persisting code:`, err);
     }
+  }
+
+  /**
+   * Retry registering pending samples when REPL context becomes available
+   */
+  async _retryPendingSampleRegistration() {
+    // TEMPORARILY DISABLED - this creates infinite loops without helping
+    return false;
+    
+    if (!this.hasPendingSamples || Object.keys(this.pendingSamples || {}).length === 0) {
+      return false;
+    }
+    
+    console.log(`LiveCodingUnit ${this.id}: Retrying registration of ${Object.keys(this.pendingSamples).length} pending samples`);
+    
+    // Wait for context to be ready
+    const contextReady = await this._waitForReplReady(5000);
+    if (!contextReady) {
+      console.warn(`LiveCodingUnit ${this.id}: Context still not ready, cannot retry sample registration`);
+      return false;
+    }
+    
+    // Move pending samples back to sample bank temporarily for registration
+    const tempSamples = { ...this.pendingSamples };
+    
+    try {
+      // Attempt registration again
+      const success = await this.updateStrudelSampleBank();
+      if (success) {
+        console.log(`LiveCodingUnit ${this.id}: Successfully registered pending samples on retry`);
+        this.pendingSamples = {};
+        this.hasPendingSamples = false;
+        return true;
+      }
+    } catch (err) {
+      console.error(`LiveCodingUnit ${this.id}: Failed to register pending samples on retry:`, err);
+    }
+    
+    return false;
+  }
+
+  /**
+   * Check and retry pending operations periodically
+   */
+  _startPendingRetryLoop() {
+    // TEMPORARILY DISABLED - this creates infinite noise without helping
+    return;
+    
+    if (this._retryInterval) {
+      clearInterval(this._retryInterval);
+    }
+    
+    this._retryInterval = setInterval(async () => {
+      if (this.hasPendingSamples && this.replInstance) {
+        console.log(`LiveCodingUnit ${this.id}: Checking for pending sample registration...`);
+        const success = await this._retryPendingSampleRegistration();
+        if (success) {
+          clearInterval(this._retryInterval);
+          this._retryInterval = null;
+        }
+      }
+    }, 2000); // Check every 2 seconds
   }
 
   /**
@@ -762,7 +883,7 @@ export class LiveCodingUnit extends BaseUnit {
   }
 
   /**
-   * Update Strudel's sample bank with current samples (unit-specific registration)
+   * Update Strudel's sample bank with current samples (improved isolation)
    */
   async updateStrudelSampleBank() {
     // Create sample map for Strudel (use blob URLs; let Strudel decode internally)
@@ -776,16 +897,18 @@ export class LiveCodingUnit extends BaseUnit {
       return true;
     }
 
-    console.log(`LiveCodingUnit ${this.id}: Registering samples to THIS unit's REPL context only:`, {
-      sampleCount: Object.keys(sampleMap).length,
+    console.log(`LiveCodingUnit ${this.id}: Registering ${Object.keys(sampleMap).length} samples:`, {
       sampleNames: Object.keys(sampleMap),
-      unitId: this.id
+      unitId: this.id,
+      replInstance: !!this.replInstance,
+      replContext: !!this.replInstance?.context,
+      editorInstance: !!this.editorInstance
     });
 
-  // CRITICAL: Only register samples with THIS unit's REPL instance, not globally
-  if (this.replInstance && this.replInstance.context) {
+    // CRITICAL: Only register samples with THIS unit's REPL instance
+    if (this.replInstance && this.editorInstance && this.replInstance.context) {
       try {
-        console.log(`LiveCodingUnit ${this.id}: Registering samples to unit's own REPL context (incremental)...`);
+        console.log(`LiveCodingUnit ${this.id}: Direct REPL context registration...`);
 
         // Ensure we have a per-unit set of what was registered already
         if (!this._registeredSamples) this._registeredSamples = new Set();
@@ -804,31 +927,30 @@ export class LiveCodingUnit extends BaseUnit {
           return true;
         }
 
-        // Prefer direct context registration (loads URLs and resolves when decoded)
+        // IMPROVED: Direct registration with proper error handling
         if (typeof this.replInstance.context.samples === 'function') {
+          console.log(`LiveCodingUnit ${this.id}: Using context.samples() function...`);
           await this.replInstance.context.samples(delta);
+          console.log(`✅ LiveCodingUnit ${this.id}: Context samples registration completed`);
         } else {
-          // Fallback: store under context._samples (not ideal, but avoids losing references)
+          console.warn(`LiveCodingUnit ${this.id}: No context.samples function, trying fallback...`);
+          // Fallback: store under context._samples
           if (!this.replInstance.context._samples) this.replInstance.context._samples = {};
           Object.assign(this.replInstance.context._samples, delta);
         }
-  // Compatibility: also register globally if available (names are unit-prefixed, so no collisions)
-        try {
-          if (typeof window !== 'undefined' && typeof window.samples === 'function') {
-            await window.samples(delta);
-          } else if (typeof window !== 'undefined') {
-            // Fallback global map
-            window.sampleMaps = window.sampleMaps || {};
-            Object.assign(window.sampleMaps, delta);
-          }
-        } catch (e) {
-          console.warn(`LiveCodingUnit ${this.id}: Global samples registration failed or unavailable`, e);
-        }
 
-  // Mark as registered
+        // REMOVED: No global registration - keep units isolated
+
+        // Mark as registered
         deltaNames.forEach(n => this._registeredSamples.add(n));
-  this._lastRegistrationAt = Date.now();
-        console.log(`✅ LiveCodingUnit ${this.id}: Registered ${deltaNames.length} new sample(s)`, deltaNames);
+        this._lastRegistrationAt = Date.now();
+        
+        console.log(`✅ LiveCodingUnit ${this.id}: Registered ${deltaNames.length} new sample(s):`, deltaNames);
+        
+        // Verify registration worked
+        const contextSamples = this.replInstance.context._samples || {};
+        console.log(`LiveCodingUnit ${this.id}: Context now has ${Object.keys(contextSamples).length} samples:`, Object.keys(contextSamples));
+        
         return true;
 
       } catch (error) {
@@ -838,13 +960,16 @@ export class LiveCodingUnit extends BaseUnit {
     }
 
     // Fallback: Store in unit-specific pending samples (avoid global pollution)
+    console.log(`LiveCodingUnit ${this.id}: REPL not ready, storing samples for later registration`);
     if (!this.pendingSamples) {
       this.pendingSamples = {};
     }
     Object.assign(this.pendingSamples, sampleMap);
     
-    console.log(`LiveCodingUnit ${this.id}: 📦 Samples stored in unit for deferred registration`);
     this.hasPendingSamples = true;
+    
+    // Start retry loop for pending samples
+    this._startPendingRetryLoop();
     
     console.warn(`LiveCodingUnit ${this.id}: ⚠️ REPL not ready. Samples stored for later registration.`);
     return false;
@@ -1038,10 +1163,13 @@ export class LiveCodingUnit extends BaseUnit {
   }
 
   /**
-   * Play the current pattern
+   * Play the current pattern (simplified - no coordination)
    */
   play() {
-    if (!this.replInstance) return;
+    if (!this.replInstance) {
+      console.warn(`LiveCodingUnit ${this.id}: No REPL instance available for play`);
+      return;
+    }
 
     // Get the current code from the editor (including manual edits)
     const code = this.getCurrentCode().trim();
@@ -1051,8 +1179,16 @@ export class LiveCodingUnit extends BaseUnit {
       return;
     }
 
-  const waitForSamples = async (timeoutMs = 300, intervalMs = 20) => {
-      const codeStr = code.trim(); // Use the fresh code, not this.currentCode
+    console.log(`LiveCodingUnit ${this.id}: Starting playback with code:`, code);
+    this._simplePlay(code);
+  }
+
+  /**
+   * Simple play without coordination (coordination was causing conflicts)
+   */
+  async _simplePlay(code) {
+    const waitForSamples = async (timeoutMs = 300, intervalMs = 20) => {
+      const codeStr = code.trim();
       const m = codeStr.match(/s\((['\"])(.*?)\1\)/);
       if (!m) return;
       const inner = m[2];
@@ -1062,43 +1198,37 @@ export class LiveCodingUnit extends BaseUnit {
       if (!names.length) return;
       const startTime = Date.now();
       while (Date.now() - startTime < timeoutMs) {
-    const have = (n) => (this._registeredSamples && this._registeredSamples.has(n));
+        const have = (n) => (this._registeredSamples && this._registeredSamples.has(n));
         if (names.every(have)) return; // ready
         await new Promise(r => setTimeout(r, intervalMs));
       }
     };
 
-    // Always stop first to clear any existing pattern
-    this.stop();
-    
-    const start = async () => {
-      try {
-        await waitForSamples();
-        
-        // Use the Strudel element's start method when available
-        if (this.strudelElement && typeof this.strudelElement.start === 'function') {
-          this.strudelElement.start();
-        } else if (this.replInstance && typeof this.replInstance.start === 'function') {
-          this.replInstance.start();
-        }
-        
-        this.isPlaying = true;
-        console.log(`LiveCodingUnit ${this.id}: Started playback`);
-      } catch (err) {
-        console.error(`LiveCodingUnit ${this.id}: start() failed`, err);
+    try {
+      // Step 1: Stop this unit's existing pattern
+      this.stop();
+      
+      // Step 2: Ensure samples are ready
+      await waitForSamples();
+      
+      // Step 3: Evaluate the code
+      await this.evaluate();
+      
+      // Step 4: Start playback
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      if (this.strudelElement && typeof this.strudelElement.start === 'function') {
+        this.strudelElement.start();
+      } else if (this.replInstance && typeof this.replInstance.start === 'function') {
+        this.replInstance.start();
       }
-    };
-    
-    // Always evaluate the current code before starting
-    
-    this.evaluate()
-      .then(() => {
-        // Small delay to ensure evaluation is processed
-        setTimeout(start, 50);
-      })
-      .catch((e) => {
-        console.error(`LiveCodingUnit ${this.id}: evaluate before start failed`, e);
-      });
+      
+      this.isPlaying = true;
+      console.log(`LiveCodingUnit ${this.id}: Playback started successfully`);
+      
+    } catch (err) {
+      console.error(`LiveCodingUnit ${this.id}: Play failed:`, err);
+    }
   }
 
   /**
@@ -1348,19 +1478,32 @@ export class LiveCodingUnit extends BaseUnit {
    * @returns {Object} - Debug information about this unit's state
    */
   getIsolationDebugInfo() {
+    const contextSamples = this.replInstance?.context?._samples || {};
+    const registeredSamples = Array.from(this._registeredSamples || []);
+    const globalInstanceKey = `strudelInstance_${this.id}`;
+    const hasPersistentInstance = !!window[globalInstanceKey];
+    
     return {
       unitId: this.id,
       hasReplInstance: !!this.replInstance,
       hasEditorInstance: !!this.editorInstance,
+      hasStrudelElement: !!this.strudelElement,
+      hasPersistentInstance,
       sampleBankSize: this.sampleBank.size,
       sampleNames: Array.from(this.sampleBank.values()).map(s => s.name),
+      registeredSamples: registeredSamples,
+      contextSamples: Object.keys(contextSamples),
+      contextSamplesCount: Object.keys(contextSamples).length,
       currentCode: this.currentCode,
       hasPendingSamples: this.hasPendingSamples,
+      pendingSamplesCount: Object.keys(this.pendingSamples || {}).length,
       hasPendingCode: !!this.pendingCode,
+      hasRetryLoop: !!this._retryInterval,
       isReadyForSounds: this.isReadyForSounds(),
       isPlaying: this.isPlaying,
-      contextSamples: this.replInstance?.context ? Object.keys(this.replInstance.context._samples || {}) : [],
-      globalUpdateMethod: `updateUnit${this.id}` in window
+      globalUpdateMethod: `updateUnit${this.id}` in window,
+      lastRegistrationAt: this._lastRegistrationAt || 'never',
+      replContextType: typeof this.replInstance?.context
     };
   }
 
@@ -1422,6 +1565,12 @@ export class LiveCodingUnit extends BaseUnit {
       this._persistTimeout = null;
     }
     
+    // Clear retry interval
+    if (this._retryInterval) {
+      clearInterval(this._retryInterval);
+      this._retryInterval = null;
+    }
+    
     // Remove event listeners
     if (this.strudelElement) {
       if (this._blurListener) {
@@ -1444,6 +1593,9 @@ export class LiveCodingUnit extends BaseUnit {
     // Clear sample bank (this will revoke blob URLs)
     this.clearSampleBank();
     
+    // Unregister from global registry
+    this._unregisterGlobally();
+    
     // Clear REPL instance references
     this.replInstance = null;
     this.editorInstance = null;
@@ -1454,8 +1606,23 @@ export class LiveCodingUnit extends BaseUnit {
     this.hasPendingSamples = false;
     this.pendingCode = null;
     
-    // Clean up global update method
+    // Clean up global update method and persistent REPL instance
     delete window[`updateUnit${this.id}`];
+    
+    // Clean up persistent REPL instance
+    const globalInstanceKey = `strudelInstance_${this.id}`;
+    if (window[globalInstanceKey]) {
+      console.log(`LiveCodingUnit ${this.id}: Cleaning up persistent REPL instance`);
+      try {
+        const element = window[globalInstanceKey];
+        if (element && element.parentNode) {
+          element.parentNode.removeChild(element);
+        }
+      } catch (err) {
+        console.warn(`LiveCodingUnit ${this.id}: Error removing persistent REPL element:`, err);
+      }
+      delete window[globalInstanceKey];
+    }
     
     // Call parent cleanup
     super.cleanup();
