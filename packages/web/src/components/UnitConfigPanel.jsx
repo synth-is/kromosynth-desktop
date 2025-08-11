@@ -577,6 +577,28 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
                     />
                     <span className="text-gray-300">Auto-generate code when adding sounds</span>
                   </label>
+                  
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-300">Max Samples in Pattern</span>
+                      <span className="text-gray-400">{unit.maxSamplesInPattern || 4}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={12}
+                      step={1}
+                      value={unit.maxSamplesInPattern || 4}
+                      onChange={(e) => onUpdateUnit(unit.id, { ...unit, maxSamplesInPattern: parseInt(e.target.value) })}
+                      className="w-full h-1.5 rounded-sm appearance-none bg-gray-700 
+                        [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 
+                        [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:bg-blue-500 
+                        [&::-webkit-slider-thumb]:appearance-none"
+                    />
+                    <div className="text-xs text-gray-400 italic">
+                      Maximum number of samples to include in auto-generated patterns
+                    </div>
+                  </div>
                 </div>
               </CollapsibleSection>
               

@@ -43,6 +43,7 @@ export class LiveCodingUnit extends BaseUnit {
     
     // Code generation settings
     this.autoGenerateCode = true;
+    this.maxSamplesInPattern = 4; // Maximum number of samples to include in auto-generated patterns
     this.basePattern = `// Live coding unit ${this.id}\n// Waiting for evolutionary sounds...\n// Double-click sounds in the tree to add them here`; // Unit-specific default pattern
     this.currentCode = this.basePattern;
     
@@ -1029,6 +1030,11 @@ export class LiveCodingUnit extends BaseUnit {
    * @param {string} sampleName - Name of the newly added sample
    */
   async generateCodeWithNewSample(sampleName) {
+    // Ensure maxSamplesInPattern is set (for backward compatibility)
+    if (!this.maxSamplesInPattern) {
+      this.maxSamplesInPattern = 4;
+    }
+    
     // Get all sample names 
   const existingSampleNames = Array.from(this.sampleBank.values()).map(s => s.name);
     
@@ -1044,8 +1050,8 @@ export class LiveCodingUnit extends BaseUnit {
       this.currentCode = `s("${existingSampleNames.join(' ')}").gain(0.8)`;
     } else {
       // Multiple samples - create a more complex pattern
-      // Pick last 4 samples for manageable pattern (space-separated inside brackets)
-      const recentSamples = existingSampleNames.slice(-4);
+      // Pick last N samples for manageable pattern (space-separated inside brackets)
+      const recentSamples = existingSampleNames.slice(-this.maxSamplesInPattern);
       this.currentCode = `s("[${recentSamples.join(' ')}]").gain(0.8)`;
     }
 
