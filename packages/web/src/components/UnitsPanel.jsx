@@ -1901,14 +1901,22 @@ return (
                 
                 // VISUAL FEEDBACK RESTORATION: For LiveCoding units, ensure visual feedback is restored
                 if (unit.type === UNIT_TYPES.LIVE_CODING) {
+                  // Fast immediate restore (new helper) to satisfy visual feedback monitors
+                  window.forceImmediateVisualFeedbackRestore?.({ onlyUnitId: unit.id });
                   setTimeout(() => {
                     const targetUnit = unitsRef.current.get(unit.id);
                     if (targetUnit && targetUnit.replInstance && targetUnit.currentCode && 
                         targetUnit.currentCode.trim() && targetUnit.currentCode !== targetUnit.basePattern) {
                       console.log(`UnitsPanel: Fallback visual feedback restoration for unit ${unit.id}`);
                       try {
-                        targetUnit.replInstance.evaluate(targetUnit.currentCode);
+                        if (typeof targetUnit.replInstance.evaluate === 'function') {
+                          targetUnit.replInstance.evaluate(targetUnit.currentCode);
+                        } else if (targetUnit.strudelElement?.editor?.repl?.evaluate) {
+                          targetUnit.strudelElement.editor.repl.evaluate(targetUnit.currentCode);
+                        }
                         console.log(`✅ Fallback visual feedback restored for unit ${unit.id}`);
+                        // Schedule global pass to harmonize states across units
+                        window._scheduleGlobalLiveCodingVisualRestore?.();
                       } catch (err) {
                         console.warn(`UnitsPanel: Fallback visual feedback restoration failed for unit ${unit.id}:`, err);
                       }
