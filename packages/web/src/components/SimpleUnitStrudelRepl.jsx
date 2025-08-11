@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Play, Square } from 'lucide-react';
 import '@strudel/repl';
 
 // GLOBAL VISUAL FEEDBACK RESTORATION
@@ -50,6 +51,7 @@ if (typeof window !== 'undefined' && !window._scheduleGlobalLiveCodingVisualRest
         }
 
   let restoredCount = 0;
+  const selectedUnitId = window.debugGetSelectedUnitId?.();
   unitsMap.forEach((unit) => {
           try {
             const element = unit?.strudelElement;
@@ -57,6 +59,9 @@ if (typeof window !== 'undefined' && !window._scheduleGlobalLiveCodingVisualRest
             const repl = editor?.repl;
             const code = unit?.currentCode;
             if (!repl || !code || !code.trim() || code.startsWith('// Live coding unit')) return;
+            // NEW: Don't auto-evaluate (which starts playback) for units that are stopped and not selected
+            const shouldEvaluate = (unit.isPlaying === true) || (unit.id === selectedUnitId);
+            if (!shouldEvaluate) return;
 
             // Ensure this unit's samples are registered in its own isolated context
             if (unit.sampleBank?.size && unit.replInstance?.context?.samples) {
@@ -92,14 +97,25 @@ if (typeof window !== 'undefined' && !window._scheduleGlobalLiveCodingVisualRest
               }
             };
 
+            const wasPlaying = !!unit.isPlaying;
             const successPrimary = attemptEval('primary');
-            if (successPrimary) restoredCount++;
+            if (successPrimary) {
+              restoredCount++;
+              // If unit was NOT playing (selected but stopped), stop immediately after evaluation to keep highlight attempt without sound
+              if (!wasPlaying && unit.replInstance) {
+                try { unit.replInstance.stop?.(); unit.replInstance.hush?.(); } catch {}
+              }
+            }
 
             // Schedule a second pass to catch late sample registrations / rendering inactivity
-            if (!unit._scheduledSecondaryVisualRestore) {
+            if (shouldEvaluate && !unit._scheduledSecondaryVisualRestore) {
               unit._scheduledSecondaryVisualRestore = true;
               setTimeout(() => {
+                const secondWasPlaying = !!unit.isPlaying;
                 attemptEval('second-pass');
+                if (!secondWasPlaying && unit.replInstance) {
+                  try { unit.replInstance.stop?.(); unit.replInstance.hush?.(); } catch {}
+                }
                 unit._scheduledSecondaryVisualRestore = false;
               }, 320);
             }
@@ -141,23 +157,30 @@ if (typeof window !== 'undefined' && !window.forceImmediateVisualFeedbackRestore
         }
       }
 
-      // 2. Evaluate code for each unit (or targeted unit)
+      // 2. Evaluate code for each unit (or targeted unit) respecting stopped state
+      const selectedUnitId = window.debugGetSelectedUnitId?.();
       unitsMap.forEach(unit => {
         if (onlyUnitId && unit.id !== onlyUnitId) return;
         const element = unit?.strudelElement;
         const repl = element?.editor?.repl;
         const code = unit?.currentCode;
         if (!repl || !code || !code.trim() || code.startsWith('// Live coding unit')) return;
+        const shouldEvaluate = (unit.isPlaying === true) || (unit.id === selectedUnitId);
+        if (!shouldEvaluate) return;
         try {
           repl.evaluate(code);
           // Dispatch a custom event for monitoring tools
           window.dispatchEvent(new CustomEvent('visual-feedback-restored', { detail: { unitId: unit.id, mode: 'immediate' } }));
+          if (!unit.isPlaying) { // restore highlighting but keep silent
+            try { repl.stop?.(); repl.hush?.(); } catch {}
+          }
         } catch (err) {
           // Second attempt after a short frame if first fails
           requestAnimationFrame(() => {
             try {
               repl.evaluate(code);
               window.dispatchEvent(new CustomEvent('visual-feedback-restored', { detail: { unitId: unit.id, mode: 'immediate-rAF' } }));
+              if (!unit.isPlaying) { try { repl.stop?.(); repl.hush?.(); } catch {} }
             } catch {}
           });
         }
@@ -175,6 +198,39 @@ if (typeof window !== 'undefined' && !window.forceImmediateVisualFeedbackRestore
 const SimpleUnitStrudelRepl = ({ unitId }) => {
   const containerRef = useRef(null);
   const strudelElementRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // Helper to get unit
+  const getUnit = () => window.getUnitInstance?.(unitId);
+
+  const handlePlay = () => {
+    const unit = getUnit();
+    if (unit && unit.type === 'LIVE_CODING') {
+      if (!unit.replInstance) {
+        console.warn(`SimpleUnitStrudelRepl ${unitId}: Cannot play yet, replInstance missing`);
+        return;
+      }
+      try { unit.play(); setIsPlaying(true); } catch (e) { console.warn('Play failed', e); }
+      return;
+    }
+    // Fallback direct
+    const repl = strudelElementRef.current?.editor?.repl;
+    if (repl) {
+      try { repl.stop?.(); repl.evaluate(strudelElementRef.current.editor.code); repl.start?.(); setIsPlaying(true); } catch (e) { console.warn('Direct play failed', e); }
+    }
+  };
+
+  const handleStop = () => {
+    const unit = getUnit();
+    if (unit && unit.type === 'LIVE_CODING') {
+      try { unit.stop(); setIsPlaying(false); } catch (e) { console.warn('Stop failed', e); }
+      return;
+    }
+    const repl = strudelElementRef.current?.editor?.repl;
+    if (repl) {
+      try { repl.stop?.(); repl.hush?.(); setIsPlaying(false); } catch (e) { console.warn('Direct stop failed', e); }
+    }
+  };
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -273,8 +329,17 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
       checkReady();
     }
 
+    // Poll playback state (lightweight)
+    const poll = setInterval(() => {
+      const unit = getUnit();
+      if (unit && unit.type === 'LIVE_CODING') {
+        if (isPlaying !== !!unit.isPlaying) setIsPlaying(!!unit.isPlaying);
+      }
+    }, 600);
+
     // Cleanup - hide instead of removing
     return () => {
+      clearInterval(poll);
       if (strudelElementRef.current) {
         // Hide the element but keep it in the DOM for visual feedback continuity
         strudelElementRef.current.style.display = 'none';
@@ -284,10 +349,16 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
   }, [unitId]);
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 rounded-lg overflow-hidden">
+    <div className="flex flex-col h-full bg-gray-900 rounded-lg overflow-hidden" data-role="simple-unit-repl" data-unit-id={unitId}>
       <div className="flex items-center gap-2 p-2 bg-gray-800 border-b border-gray-700">
-        <span className="text-xs text-gray-400 px-2">
-          Stable Unit {unitId}
+        <button onClick={handlePlay} disabled={isPlaying} title="Play" className={`p-1.5 rounded ${isPlaying ? 'bg-gray-700 text-gray-500' : 'bg-green-600 hover:bg-green-700 text-white'} transition-colors`}>
+          <Play size={14} />
+        </button>
+        <button onClick={handleStop} disabled={!isPlaying} title="Stop" className={`p-1.5 rounded ${!isPlaying ? 'bg-gray-700 text-gray-500' : 'bg-red-600 hover:bg-red-700 text-white'} transition-colors`}>
+          <Square size={14} />
+        </button>
+        <span className="text-xs text-gray-400 px-2 truncate">
+          {isPlaying ? 'Playing' : 'Stopped'} • Unit {unitId}
         </span>
       </div>
       <div ref={containerRef} className="flex-1 min-h-[240px]" />
