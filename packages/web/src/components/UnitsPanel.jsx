@@ -1808,25 +1808,30 @@ return (
               {/* Controls */}
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={(e) => handleActiveToggle(e, unit)}
-                    className={`w-6 h-6 rounded-sm text-sm flex items-center justify-center ${unit.active 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-gray-700 text-gray-400'}`}
-                  >
-                    {getDisplayNumber(unit)} {/* Replace unit.id with getDisplayNumber(unit) */}
-                  </button>
-                  
-                  <button
-                    onClick={(e) => handleSoloToggle(e, unit.id)}
-                    className={`w-6 h-6 rounded-sm text-xs font-medium flex items-center justify-center ${unit.soloed 
-                      ? 'bg-yellow-600 text-white' 
-                      : 'bg-gray-700 text-gray-400'}`}
-                  >
-                    S
-                  </button>
-                  
-                  <Volume2 size={14} className="text-gray-400" />
+                  {/* Hide global controls for LiveCodingUnits (handled inside the REPL header) */}
+                  {unit.type !== 'LIVE_CODING' && (
+                    <>
+                      <button
+                        onClick={(e) => handleActiveToggle(e, unit)}
+                        className={`w-6 h-6 rounded-sm text-sm flex items-center justify-center ${unit.active 
+                          ? 'bg-blue-600 text-white' 
+                          : 'bg-gray-700 text-gray-400'}`}
+                      >
+                        {getDisplayNumber(unit)} {/* Replace unit.id with getDisplayNumber(unit) */}
+                      </button>
+                      
+                      <button
+                        onClick={(e) => handleSoloToggle(e, unit.id)}
+                        className={`w-6 h-6 rounded-sm text-xs font-medium flex items-center justify-center ${unit.soloed 
+                          ? 'bg-yellow-600 text-white' 
+                          : 'bg-gray-700 text-gray-400'}`}
+                      >
+                        S
+                      </button>
+                      
+                      <Volume2 size={14} className="text-gray-400" />
+                    </>
+                  )}
                   
                   <button
                     onClick={(e) => handleRemoveUnit(e, unit.id)}

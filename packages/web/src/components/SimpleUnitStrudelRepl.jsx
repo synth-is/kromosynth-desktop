@@ -199,6 +199,7 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
   const containerRef = useRef(null);
   const strudelElementRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isSolo, setIsSolo] = useState(false);
 
   // Helper to get unit
   const getUnit = () => window.getUnitInstance?.(unitId);
@@ -246,6 +247,55 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
     if (repl) {
       const code = strudelElementRef.current.editor?.code;
       try { repl.stop?.(); repl.evaluate(code); if (!isPlaying) { repl.stop?.(); repl.hush?.(); } } catch (e) { console.warn('Direct update failed', e); }
+    }
+  };
+
+  const toggleSolo = () => {
+    const unit = getUnit();
+    if (unit && unit.type === 'LIVE_CODING') {
+      const newSolo = !unit.solo;
+      // If enabling solo, hush all other live coding units but remember their previous playing state
+      if (newSolo) {
+        const prevStates = [];
+        if (window._liveCodingUnits) {
+          window._liveCodingUnits.forEach((other, otherId) => {
+            if (otherId !== unit.id) {
+              prevStates.push({ id: otherId, wasPlaying: !!other.isPlaying });
+              // Stop others to effectively solo this unit
+              if (other.isPlaying) {
+                try { other.stop(); } catch {}
+              }
+              other.solo = false;
+              if (other.strudelElement) {
+                try { other.strudelElement.solo = false; } catch {}
+              }
+            }
+          });
+        }
+        unit._previousPlayingStates = prevStates;
+        window._currentLiveCodingSoloUnitId = unit.id;
+      } else {
+        // Restoring previous states when disabling solo
+        if (unit._previousPlayingStates && window._liveCodingUnits) {
+          unit._previousPlayingStates.forEach(({ id, wasPlaying }) => {
+            const other = window._liveCodingUnits.get(id);
+            if (other) {
+              other.solo = false;
+              if (other.strudelElement) {
+                try { other.strudelElement.solo = false; } catch {}
+              }
+              if (wasPlaying && !other.isPlaying) {
+                try { other.play(); } catch {}
+              }
+            }
+          });
+        }
+        unit._previousPlayingStates = null;
+        window._currentLiveCodingSoloUnitId = null;
+      }
+      unit.solo = newSolo;
+      try { if (unit.strudelElement) unit.strudelElement.solo = newSolo; } catch {}
+      setIsSolo(newSolo);
     }
   };
 
@@ -353,10 +403,11 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
     }
 
     // Poll playback state (lightweight)
-    const poll = setInterval(() => {
+  const poll = setInterval(() => {
       const unit = getUnit();
       if (unit && unit.type === 'LIVE_CODING') {
         if (isPlaying !== !!unit.isPlaying) setIsPlaying(!!unit.isPlaying);
+    if (isSolo !== !!unit.solo) setIsSolo(!!unit.solo);
       }
     }, 600);
 
@@ -374,6 +425,7 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
   return (
     <div className="flex flex-col h-full bg-gray-900 rounded-lg overflow-hidden" data-role="simple-unit-repl" data-unit-id={unitId}>
       <div className="flex items-center gap-2 p-2 bg-gray-800 border-b border-gray-700">
+        <button onClick={toggleSolo} title="Solo" className={`px-1.5 py-1 text-[10px] font-semibold rounded ${isSolo ? 'bg-yellow-500 text-gray-900' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'} transition-colors`}>S</button>
         <button onClick={handlePlay} disabled={isPlaying} title="Play" className={`p-1.5 rounded ${isPlaying ? 'bg-gray-700 text-gray-500' : 'bg-green-600 hover:bg-green-700 text-white'} transition-colors`}>
           <Play size={14} />
         </button>
