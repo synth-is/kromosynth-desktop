@@ -617,7 +617,29 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
                         [&::-webkit-slider-thumb]:appearance-none"
                     />
                     <div className="text-xs text-gray-400 italic">
-                      Maximum number of samples to include in auto-generated patterns
+                      Maximum total number of sample instances in auto-generated patterns (includes multiplied samples)
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-300">Sample Multiplier</span>
+                      <span className="text-gray-400">{unit.sampleMultiplier || 1}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={8}
+                      step={1}
+                      value={unit.sampleMultiplier || 1}
+                      onChange={(e) => onUpdateUnit(unit.id, { ...unit, sampleMultiplier: parseInt(e.target.value) })}
+                      className="w-full h-1.5 rounded-sm appearance-none bg-gray-700 
+                        [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 
+                        [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:bg-blue-500 
+                        [&::-webkit-slider-thumb]:appearance-none"
+                    />
+                    <div className="text-xs text-gray-400 italic">
+                      How many times each hovered sound is added to the pattern (1=single, 2=duplicate, 3=triplet, etc.)
                     </div>
                   </div>
                 </div>
