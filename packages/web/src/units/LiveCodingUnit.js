@@ -1253,18 +1253,54 @@ export class LiveCodingUnit extends BaseUnit {
       this.maxSamplesInPattern = 4;
     }
     
-    // Get all sample names 
-    const existingSampleNames = Array.from(this.sampleBank.values()).map(s => s.name);
-    
-    console.log('🔧 generateCodeWithNewSample Debug:', {
-      newSample: sampleName,
-      existingSamples: existingSampleNames,
-      currentCode: this.getCurrentCode(),
-      preserveEditsEnabled: this.preserveManualEdits
-    });
-    
     // Check if we should preserve manual edits
     const shouldPreserveEdits = this.preserveManualEdits && this.hasManualEdits();
+    
+    let existingSampleNames;
+    
+    if (shouldPreserveEdits) {
+      // IMPROVED: When preserving edits, use samples from current code + ensure new sample is included
+      const currentCode = this.getCurrentCode();
+      const parsed = this.parseStrudelPattern(currentCode);
+      const samplesInCurrentCode = parsed.samples || [];
+      
+      // Include samples from current code, plus the new sample, but don't exceed maxSamplesInPattern
+      const candidateSamples = [...samplesInCurrentCode];
+      if (!candidateSamples.includes(sampleName)) {
+        candidateSamples.push(sampleName);
+      }
+      
+      // If we exceed maxSamplesInPattern, remove oldest samples (keep newest ones including the new sample)
+      if (candidateSamples.length > this.maxSamplesInPattern) {
+        // Keep the new sample and the most recent ones from current code
+        const samplesWithoutNew = candidateSamples.filter(s => s !== sampleName);
+        const recentSamples = samplesWithoutNew.slice(-(this.maxSamplesInPattern - 1));
+        existingSampleNames = [...recentSamples, sampleName];
+      } else {
+        existingSampleNames = candidateSamples;
+      }
+      
+      console.log('🔧 generateCodeWithNewSample (preserve mode) Debug:', {
+        newSample: sampleName,
+        samplesInCurrentCode,
+        candidateSamples,
+        existingSamples: existingSampleNames,
+        currentCode,
+        maxSamplesInPattern: this.maxSamplesInPattern,
+        preserveEditsEnabled: this.preserveManualEdits
+      });
+    } else {
+      // Original behavior: use all samples from bank (for fresh generation)
+      const allSamples = Array.from(this.sampleBank.values()).map(s => s.name);
+      existingSampleNames = allSamples;
+      
+      console.log('🔧 generateCodeWithNewSample (fresh mode) Debug:', {
+        newSample: sampleName,
+        existingSamples: existingSampleNames,
+        currentCode: this.getCurrentCode(),
+        preserveEditsEnabled: this.preserveManualEdits
+      });
+    }
     
     console.log('🔧 Manual edit check result:', shouldPreserveEdits);
     
@@ -1432,10 +1468,7 @@ export class LiveCodingUnit extends BaseUnit {
     const unusedSamples = Array.from(samplesToKeep).filter(s => !usedSamples.has(s));
     preservedElements.push(...unusedSamples);
     
-    // Ensure the new sample is included
-    if (!usedSamples.has(newSampleName) && samplesToKeep.has(newSampleName)) {
-      preservedElements.push(newSampleName);
-    }
+    // Note: No need to explicitly ensure newSampleName is included - it's already handled by unusedSamples
     
     // Build final pattern
     if (preservedElements.length <= 2) {
