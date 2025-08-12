@@ -211,6 +211,9 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
         console.warn(`SimpleUnitStrudelRepl ${unitId}: Cannot play yet, replInstance missing`);
         return;
       }
+      // CRITICAL: Persist any manual edits before playing
+      try { unit.persistCurrentCode(); } catch (e) { console.warn('Persist current code failed', e); }
+      
       try { unit.play(); setIsPlaying(true); } catch (e) { console.warn('Play failed', e); }
       return;
     }
@@ -236,6 +239,9 @@ const SimpleUnitStrudelRepl = ({ unitId }) => {
   const handleUpdate = () => {
     const unit = getUnit();
     if (unit && unit.type === 'LIVE_CODING') {
+      // CRITICAL: Persist any manual edits before evaluation
+      try { unit.persistCurrentCode(); } catch (e) { console.warn('Persist current code failed', e); }
+      
       const wasPlaying = !!unit.isPlaying;
       try { unit.evaluate(); } catch (e) { console.warn('Update evaluate failed', e); }
       if (!wasPlaying) {

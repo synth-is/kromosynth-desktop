@@ -578,6 +578,27 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
                     <span className="text-gray-300">Auto-generate code when adding sounds</span>
                   </label>
                   
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={unit.preserveManualEdits !== false} // Default to true
+                      onChange={(e) => onUpdateUnit(unit.id, { ...unit, preserveManualEdits: e.target.checked })}
+                      className="rounded bg-gray-800 border-gray-700"
+                      disabled={!unit.autoGenerateCode}
+                    />
+                    <span className={`text-gray-300 ${!unit.autoGenerateCode ? 'opacity-50' : ''}`}>
+                      Preserve manual edits when adding sounds
+                    </span>
+                  </label>
+                  <div className="text-xs text-gray-400 italic ml-6">
+                    When enabled, manual edits like modifiers (u1_s0*4), groupings [u1_s1 u1_s2], and chain methods (.room(2)) will be preserved when adding new samples
+                  </div>
+                  {!unit.autoGenerateCode && (
+                    <div className="text-xs text-gray-500 italic ml-6">
+                      Only available when auto-generate is enabled
+                    </div>
+                  )}
+                  
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-300">Max Samples in Pattern</span>
@@ -690,21 +711,23 @@ export default function UnitConfigPanel({ unit, units, onClose, onUpdateUnit, tr
                         </button>
                         <button
                           onClick={async () => {
-                            console.log('🧪 Adding test tone sample...');
-                            if (actualInstance && actualInstance.addTestSample) {
-                              try {
-                                const testSampleName = await actualInstance.addTestSample();
-                                console.log('✅ Test sample added:', testSampleName);
-                              } catch (err) {
-                                console.error('❌ Failed to add test sample:', err);
-                              }
-                            } else {
-                              console.log('❌ No addTestSample method available');
+                            console.log('🔄 Force persisting current editor code...');
+                            if (actualInstance) {
+                              // Force persistence of current editor state
+                              actualInstance.persistCurrentCode();
+                              
+                              // Show what getCurrentCode returns
+                              const currentCode = actualInstance.getCurrentCode();
+                              console.log('🔍 Current code after persistence:', currentCode);
+                              
+                              // Check if manual edits are detected
+                              const hasEdits = actualInstance.hasManualEdits();
+                              console.log('🔍 Manual edits detected:', hasEdits);
                             }
                           }}
-                          className="px-3 py-1 text-xs bg-green-600 hover:bg-green-700 rounded text-white"
+                          className="px-3 py-1 text-xs bg-yellow-600 hover:bg-yellow-700 rounded text-white"
                         >
-                          Add Test Tone
+                          Force Persist Code
                         </button>
                       </div>
                       <div className="text-xs text-gray-400 mt-2">

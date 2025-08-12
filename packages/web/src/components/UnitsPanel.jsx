@@ -567,6 +567,9 @@ export default function UnitsPanel({
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
         const unit = unitsRef.current.get(selectedUnitId);
         if (unit && unit.type === UNIT_TYPES.LIVE_CODING) {
+          // CRITICAL: Persist any manual edits before evaluation
+          try { unit.persistCurrentCode(); } catch (e) { console.warn('Persist current code failed', e); }
+          
           const wasPlaying = !!unit.isPlaying;
           try { unit.evaluate(); } catch (err) { console.warn('Shortcut evaluate failed', err); }
           if (!wasPlaying) {
