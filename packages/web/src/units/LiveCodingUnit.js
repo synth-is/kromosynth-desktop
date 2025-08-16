@@ -614,28 +614,6 @@ export class LiveCodingUnit extends BaseUnit {
       console.warn('⚠️ Audio buffer appears to contain no sound data - this may explain why playback is silent');
     }
     
-    // Debug: Test if the original AudioBuffer is playable
-    console.log('🧪 Testing AudioBuffer playability directly...');
-    try {
-      // Create a simple test by playing the AudioBuffer directly via Web Audio API
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioContext.createBufferSource();
-      source.buffer = audioBuffer;
-      
-      // Test playback for 100ms to verify the buffer has audio
-      const testGain = audioContext.createGain();
-      testGain.gain.setValueAtTime(0.3, audioContext.currentTime); // Slightly higher volume test
-      source.connect(testGain);
-      testGain.connect(audioContext.destination);
-      
-      source.start(audioContext.currentTime);
-      source.stop(audioContext.currentTime + 0.2); // Slightly longer test
-      
-      console.log('✅ AudioBuffer direct playback test started (you should hear a brief sound)');
-    } catch (err) {
-      console.error('❌ AudioBuffer direct playback test failed:', err);
-    }
-    
     // Try alternative approach: Use OfflineAudioContext to create better quality WAV
     console.log('🧪 Creating high-quality WAV with OfflineAudioContext...');
     try {
