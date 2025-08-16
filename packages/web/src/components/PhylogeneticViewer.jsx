@@ -1204,8 +1204,21 @@ const PhylogeneticViewer = ({
       className={`flex flex-col h-screen ${theme === 'light' ? 'bg-gray-100' : 'bg-gray-950'}`}
       onClick={handleClick}
     >
-      {/* Silent Mode Indicator */}
+      {/* Silent Mode Indicator + Discord Button */}
       <div className="fixed bottom-2 left-2 text-white/70 text-xs flex items-center gap-2 z-50">
+        {/* Discord Button */}
+        <a
+          href="https://discord.gg/8v6MaaAS7F"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="p-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white flex items-center mr-2"
+          title="Join us on Discord"
+        >
+          {/* Discord SVG icon (Heroicons/outline style, Tailwind compatible) */}
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+            <path d="M20.317 4.369A19.791 19.791 0 0 0 16.885 3.3a.084.084 0 0 0-.09.042c-.388.676-.822 1.557-1.125 2.25a18.726 18.726 0 0 0-5.36 0c-.303-.693-.737-1.574-1.125-2.25a.084.084 0 0 0-.09-.042c-3.432.6-6.13 2.07-6.13 2.07a.07.07 0 0 0-.032.028C.533 9.043-.32 13.58.099 18.057a.09.09 0 0 0 .032.062c2.577 1.89 5.07 2.41 5.07 2.41a.084.084 0 0 0 .09-.03c.39-.534.74-1.1 1.02-1.7a.084.084 0 0 0-.045-.115c-.552-.21-1.08-.47-1.59-.77a.084.084 0 0 1-.008-.14c.107-.08.214-.16.317-.24a.084.084 0 0 1 .086-.01c3.3 1.51 6.86 1.51 10.14 0a.084.084 0 0 1 .087.01c.104.08.21.16.317.24a.084.084 0 0 1-.008.14c-.51.3-1.038.56-1.59.77a.084.084 0 0 0-.045.115c.28.6.63 1.166 1.02 1.7a.084.084 0 0 0 .09.03s2.493-.52 5.07-2.41a.09.09 0 0 0 .032-.062c.43-4.477-.434-9.014-2.37-13.66a.07.07 0 0 0-.032-.028ZM8.02 15.33c-.987 0-1.797-.9-1.797-2.01 0-1.11.8-2.01 1.797-2.01 1 0 1.8.9 1.8 2.01 0 1.11-.8 2.01-1.8 2.01Zm7.96 0c-.987 0-1.797-.9-1.797-2.01 0-1.11.8-2.01 1.797-2.01 1 0 1.8.9 1.8 2.01 0 1.11-.8 2.01-1.8 2.01Z" />
+          </svg>
+        </a>
         <button
           onClick={handleExportSVG}
           className="p-1.5 rounded bg-gray-800/80 hover:bg-gray-700/80 text-white mr-2"
