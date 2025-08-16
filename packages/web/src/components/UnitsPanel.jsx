@@ -127,6 +127,9 @@ export default function UnitsPanel({
   const unitsRef = useRef(new Map());
   const lastHoverEventIdRef = useRef(null);
   const selectionChangedAtRef = useRef(0);
+  
+  // Add state to track unit creation status
+  const [creatingUnits, setCreatingUnits] = useState(new Set());
 
   // Track when the selected unit changes to gate stale hover events
   useEffect(() => {
@@ -149,82 +152,109 @@ export default function UnitsPanel({
 
   // Initialize new units and register them with global context
   useEffect(() => {
-    // Create new units first
-    units.forEach(async unit => {
-      if (!unitsRef.current.has(unit.id)) {
-        console.log('Creating new unit:', {
-          id: unit.id,
-          type: unit.type,
-          currentUnits: units.map(u => ({ id: u.id, type: u.type })),
-          existingInstances: Array.from(unitsRef.current.entries()).map(([id, instance]) => ({
-            id,
-            type: instance.type,
-            hasTrajectories: instance.trajectories?.size > 0
-          }))
-        });
-
-        let unitInstance;
-        if (unit.type === UNIT_TYPES.TRAJECTORY) {
-          unitInstance = new TrajectoryUnit(unit.id);
-          await unitInstance.initialize();
-          unitsRef.current.set(unit.id, unitInstance);
+    // Create new units first - use Promise.all to properly handle async operations
+    const createUnits = async () => {
+      const unitCreationPromises = units.map(async unit => {
+        if (!unitsRef.current.has(unit.id)) {
+          // Mark unit as being created
+          setCreatingUnits(prev => new Set(prev).add(unit.id));
           
-          // CRITICAL: Also add to the context unitsRef
-          if (contextUnitsRef && contextUnitsRef.current) {
-            contextUnitsRef.current.set(unit.id, unitInstance);
-          }
-          
-          // Initialize trajectory state immediately for new trajectory units
-          setTrajectoryStates(prev => {
-            const newState = new Map(prev);
-            newState.set(unit.id, []);  // Set empty trajectories array
-            return newState;
+          console.log('Creating new unit:', {
+            id: unit.id,
+            type: unit.type,
+            currentUnits: units.map(u => ({ id: u.id, type: u.type })),
+            existingInstances: Array.from(unitsRef.current.entries()).map(([id, instance]) => ({
+              id,
+              type: instance.type,
+              hasTrajectories: instance.trajectories?.size > 0
+            }))
           });
-          
-          setRecordingStatus(prev => ({
-            ...prev,
-            [unit.id]: false  // Initialize recording status
-          }));
-        } else if (unit.type === UNIT_TYPES.SEQUENCING) {
-          unitInstance = new SequencingUnit(unit.id);
-          await unitInstance.initialize();
-          unitsRef.current.set(unit.id, unitInstance);
-          
-          // CRITICAL: Also add to the context unitsRef
-          if (contextUnitsRef && contextUnitsRef.current) {
-            contextUnitsRef.current.set(unit.id, unitInstance);
-          }
-        } else if (unit.type === UNIT_TYPES.LOOPING) {
-          unitInstance = new LoopingUnit(unit.id);
-          await unitInstance.initialize();
-          unitsRef.current.set(unit.id, unitInstance);
-          
-          // CRITICAL: Also add to the context unitsRef
-          if (contextUnitsRef && contextUnitsRef.current) {
-            contextUnitsRef.current.set(unit.id, unitInstance);
-          }
-        } else if (unit.type === UNIT_TYPES.LIVE_CODING) {
-          unitInstance = new LiveCodingUnit(unit.id);
-          await unitInstance.initialize();
-          unitsRef.current.set(unit.id, unitInstance);
-          
-          // CRITICAL: Also add to the context unitsRef
-          if (contextUnitsRef && contextUnitsRef.current) {
-            contextUnitsRef.current.set(unit.id, unitInstance);
+
+          try {
+            let unitInstance;
+            if (unit.type === UNIT_TYPES.TRAJECTORY) {
+              unitInstance = new TrajectoryUnit(unit.id);
+              await unitInstance.initialize();
+              unitsRef.current.set(unit.id, unitInstance);
+              
+              // CRITICAL: Also add to the context unitsRef
+              if (contextUnitsRef && contextUnitsRef.current) {
+                contextUnitsRef.current.set(unit.id, unitInstance);
+              }
+              
+              // Initialize trajectory state immediately for new trajectory units
+              setTrajectoryStates(prev => {
+                const newState = new Map(prev);
+                newState.set(unit.id, []);  // Set empty trajectories array
+                return newState;
+              });
+              
+              setRecordingStatus(prev => ({
+                ...prev,
+                [unit.id]: false  // Initialize recording status
+              }));
+            } else if (unit.type === UNIT_TYPES.SEQUENCING) {
+              unitInstance = new SequencingUnit(unit.id);
+              await unitInstance.initialize();
+              unitsRef.current.set(unit.id, unitInstance);
+              
+              // CRITICAL: Also add to the context unitsRef
+              if (contextUnitsRef && contextUnitsRef.current) {
+                contextUnitsRef.current.set(unit.id, unitInstance);
+              }
+            } else if (unit.type === UNIT_TYPES.LOOPING) {
+              unitInstance = new LoopingUnit(unit.id);
+              await unitInstance.initialize();
+              unitsRef.current.set(unit.id, unitInstance);
+              
+              // CRITICAL: Also add to the context unitsRef
+              if (contextUnitsRef && contextUnitsRef.current) {
+                contextUnitsRef.current.set(unit.id, unitInstance);
+              }
+            } else if (unit.type === UNIT_TYPES.LIVE_CODING) {
+              unitInstance = new LiveCodingUnit(unit.id);
+              await unitInstance.initialize();
+              unitsRef.current.set(unit.id, unitInstance);
+              
+              // CRITICAL: Also add to the context unitsRef
+              if (contextUnitsRef && contextUnitsRef.current) {
+                contextUnitsRef.current.set(unit.id, unitInstance);
+              }
+            }
+
+            // Debug log for unit registration
+            console.log('Unit registered with context:', {
+              unitId: unit.id, 
+              type: unit.type,
+              addedToLocalRef: !!unitsRef.current.get(unit.id),
+              addedToContextRef: contextUnitsRef && contextUnitsRef.current ? 
+                !!contextUnitsRef.current.get(unit.id) : 'context ref not available',
+              contextRefAvailable: !!contextUnitsRef
+            });
+            
+            // Mark unit as created
+            setCreatingUnits(prev => {
+              const next = new Set(prev);
+              next.delete(unit.id);
+              return next;
+            });
+            
+          } catch (error) {
+            console.error(`Failed to create unit ${unit.id}:`, error);
+            // Mark unit as failed
+            setCreatingUnits(prev => {
+              const next = new Set(prev);
+              next.delete(unit.id);
+              return next;
+            });
           }
         }
+      });
 
-        // Debug log for unit registration
-        console.log('Unit registered with context:', {
-          unitId: unit.id, 
-          type: unit.type,
-          addedToLocalRef: !!unitsRef.current.get(unit.id),
-          addedToContextRef: contextUnitsRef && contextUnitsRef.current ? 
-            !!contextUnitsRef.current.get(unit.id) : 'context ref not available',
-          contextRefAvailable: !!contextUnitsRef
-        });
-      }
-    });
+      await Promise.all(unitCreationPromises);
+    };
+
+    createUnits();
 
     // Update existing units' configuration
     units.forEach(unit => {
@@ -1203,12 +1233,32 @@ const TrajectoryEventParams = ({
 const renderLiveCodingControls = (unit) => {
 if (unit.type !== UNIT_TYPES.LIVE_CODING) return null;
 
+// Check if unit is currently being created
+if (creatingUnits.has(unit.id)) {
+  return (
+    <div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
+      <div className="text-xs text-blue-400 flex items-center gap-2">
+        <Loader2 size={12} className="animate-spin" />
+        Setting up unit...
+      </div>
+    </div>
+  );
+}
+
 const liveCodingUnit = unitsRef.current.get(unit.id);
 if (!liveCodingUnit) {
-console.warn(`LiveCodingUnit ${unit.id} not found in unitsRef`);
+console.warn(`LiveCodingUnit ${unit.id} not found in unitsRef`, {
+  unitId: unit.id,
+  unitsRefKeys: Array.from(unitsRef.current.keys()),
+  unitsRefSize: unitsRef.current.size,
+  unitType: unit.type,
+  hasContextRef: !!contextUnitsRef?.current,
+  contextRefKeys: contextUnitsRef?.current ? Array.from(contextUnitsRef.current.keys()) : 'no context ref'
+});
 return (
 <div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
-<div className="text-xs text-red-400">Unit not initialized</div>
+<div className="text-xs text-red-400">Unit needs setup</div>
+<div className="text-xs text-gray-500">ID: {String(unit.id).slice(-6)}</div>
 </div>
 );
 }
