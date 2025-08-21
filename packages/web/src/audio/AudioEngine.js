@@ -19,7 +19,23 @@ class AudioEngine {
 
     try {
       const context = new AudioContext();
-      await context.resume();
+      
+      // Firefox-specific: Add timeout to context.resume() to prevent hanging
+      if (context.state === 'suspended') {
+        const resumePromise = context.resume();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('AudioContext.resume() timeout after 5 seconds')), 5000)
+        );
+        
+        try {
+          await Promise.race([resumePromise, timeoutPromise]);
+        } catch (error) {
+          console.warn('AudioContext.resume() failed or timed out:', error.message);
+          // Continue anyway - some Firefox versions can work even if resume times out
+        }
+      } else {
+        await context.resume();
+      }
       
       const core = new WebRenderer();
       const node = await core.initialize(context, {
@@ -99,6 +115,17 @@ class AudioEngine {
   updateAudioGraph() {
     if (!this.initialized) return;
 
+    // Firefox-specific: Check if AudioContext is suspended before playback
+    const isFirefox = navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
+    if (isFirefox && this.context.state === 'suspended') {
+      console.warn('🚨 Firefox: AudioContext is suspended during playback, attempting resume...');
+      this.context.resume().then(() => {
+        console.log('🔧 Firefox: AudioContext resumed during playback, state:', this.context.state);
+      }).catch(err => {
+        console.error('🚨 Firefox: Failed to resume AudioContext during playback:', err);
+      });
+    }
+
     console.log('AudioEngine: Updating audio graph', {
       units: Array.from(this.unitNodes.entries()).map(([id, unit]) => ({
         id,
@@ -143,6 +170,25 @@ class AudioEngine {
 
   getRenderer() {
     return this.renderer;
+  }
+
+  // Firefox-specific: Force AudioContext resume with user interaction
+  async ensureAudioContextRunning() {
+    if (!this.context) return false;
+    
+    const isFirefox = navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
+    if (isFirefox && this.context.state !== 'running') {
+      console.log('🔧 Firefox: Ensuring AudioContext is running, current state:', this.context.state);
+      try {
+        await this.context.resume();
+        console.log('🔧 Firefox: AudioContext resume successful, new state:', this.context.state);
+        return this.context.state === 'running';
+      } catch (error) {
+        console.error('🚨 Firefox: Failed to ensure AudioContext running:', error);
+        return false;
+      }
+    }
+    return this.context.state === 'running';
   }
 
   // Add helper to convert dB to linear gain
