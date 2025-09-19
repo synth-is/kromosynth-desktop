@@ -94,11 +94,436 @@ const DynamicStrudelTest = () => {
   };
 
   // Start all REPLs - like in StrudelReplTest
-  const startAll = () => {
+  const startAll = async () => {
     console.log('Starting all REPLs...');
+    // Ensure AudioContext is resumed before starting all
+    await ensureGlobalAudioContextResumed();
     if (window.strudelGlobalStartAll) {
       window.strudelGlobalStartAll();
     }
+  };
+
+  // Global AudioContext resumption function
+  const ensureGlobalAudioContextResumed = async () => {
+    try {
+      console.log('🔧 Checking global AudioContext state...');
+      const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
+      
+      // Method 1: Try to find Strudel's AudioContext through REPL instances
+      let strudelContext = null;
+      
+      // Check if we have any REPL instances with audio contexts
+      if (window._dynamicStrudelRepls && window._dynamicStrudelRepls.size > 0) {
+        for (const [id, replRef] of window._dynamicStrudelRepls) {
+          const element = replRef.current;
+          if (element?.editor?.repl) {
+            console.log(`🔧 Found REPL instance ${id}, checking for AudioContext...`);
+            const repl = element.editor.repl;
+            
+            // Priority 1: Check scheduler for AudioContext (most likely location)
+            if (repl.scheduler) {
+              console.log(`🔧 Checking scheduler in REPL ${id}...`);
+              
+              // Check scheduler context
+              if (repl.scheduler.context) {
+                const schedulerCtx = repl.scheduler.context;
+                if (schedulerCtx.audioContext) {
+                  strudelContext = schedulerCtx.audioContext;
+                  console.log('🔧 Found audioContext in scheduler context');
+                  break;
+                } else if (schedulerCtx.webaudio && schedulerCtx.webaudio.context) {
+                  strudelContext = schedulerCtx.webaudio.context;
+                  console.log('🔧 Found webaudio context in scheduler context');
+                  break;
+                }
+              }
+              
+              // Check scheduler properties directly
+              Object.getOwnPropertyNames(repl.scheduler).forEach(prop => {
+                const value = repl.scheduler[prop];
+                if (!strudelContext && value && typeof value === 'object' && 
+                    (prop.toLowerCase().includes('audio') || prop.toLowerCase().includes('context')) &&
+                    typeof value.resume === 'function' && value.state !== undefined) {
+                  strudelContext = value;
+                  console.log(`🔧 Found AudioContext in scheduler.${prop}`);
+                }
+                
+                // Special check for worker and channel objects
+                if (!strudelContext && prop === 'worker' && value && typeof value === 'object') {
+                  Object.getOwnPropertyNames(value).forEach(workerProp => {
+                    const workerValue = value[workerProp];
+                    if (!strudelContext && workerValue && typeof workerValue === 'object' &&
+                        typeof workerValue.resume === 'function' && workerValue.state !== undefined) {
+                      strudelContext = workerValue;
+                      console.log(`🔧 Found AudioContext in scheduler.worker.${workerProp}`);
+                    }
+                  });
+                }
+                
+                if (!strudelContext && prop === 'channel' && value && typeof value === 'object') {
+                  Object.getOwnPropertyNames(value).forEach(channelProp => {
+                    const channelValue = value[channelProp];
+                    if (!strudelContext && channelValue && typeof channelValue === 'object' &&
+                        typeof channelValue.resume === 'function' && channelValue.state !== undefined) {
+                      strudelContext = channelValue;
+                      console.log(`🔧 Found AudioContext in scheduler.channel.${channelProp}`);
+                    }
+                  });
+                }
+              });
+              
+              if (strudelContext) break;
+            }
+            
+            // Priority 2: Check REPL context (fallback)
+            if (repl.context) {
+              const replContext = repl.context;
+              
+              // Look for AudioContext in the REPL context
+              if (replContext.audioContext) {
+                strudelContext = replContext.audioContext;
+                console.log('🔧 Found audioContext in REPL context');
+                break;
+              }
+              
+              // Alternative: Look for webaudio context
+              if (replContext.webaudio && replContext.webaudio.context) {
+                strudelContext = replContext.webaudio.context;
+                console.log('🔧 Found webaudio context in REPL context');
+                break;
+              }
+              
+              // Try to access through cyclist or other Strudel internals
+              if (replContext.cyclist && replContext.cyclist.context) {
+                strudelContext = replContext.cyclist.context;
+                console.log('🔧 Found cyclist context in REPL context');
+                break;
+              }
+            }
+          }
+        }
+      }
+      
+      // Method 2: Try global Strudel/AudioContext references
+      if (!strudelContext) {
+        const possibleContexts = [
+          window.audioContext,
+          window._strudelAudioContext,
+          window.webAudioContext,
+          // Check for any AudioContext instances globally
+          ...(window.AudioContext ? [new AudioContext()] : [])
+        ];
+        
+        for (const context of possibleContexts) {
+          if (context && typeof context.resume === 'function') {
+            strudelContext = context;
+            console.log('🔧 Found global AudioContext');
+            break;
+          }
+        }
+      }
+      
+      // Method 3: Try Tone.js if available (fallback)
+      if (!strudelContext && window.Tone && window.Tone.context) {
+        strudelContext = window.Tone.context;
+        console.log('🔧 Found Tone.js context');
+      }
+      
+      // Resume the found context
+      if (strudelContext) {
+        console.log('🔧 AudioContext state:', strudelContext.state);
+        
+        if (strudelContext.state === 'suspended') {
+          console.log('🔧 Resuming AudioContext...');
+          
+          if (isFirefox) {
+            // Firefox-specific: Add timeout to prevent hanging
+            const resumeWithTimeout = () => {
+              return new Promise(async (resolve, reject) => {
+                const timeout = setTimeout(() => {
+                  console.warn('🚨 Firefox: AudioContext resume timeout after 5 seconds');
+                  resolve(); // Continue anyway
+                }, 5000);
+                
+                try {
+                  await strudelContext.resume();
+                  clearTimeout(timeout);
+                  console.log('✅ AudioContext resumed successfully');
+                  resolve();
+                } catch (err) {
+                  clearTimeout(timeout);
+                  console.warn('🚨 AudioContext resume failed:', err);
+                  resolve(); // Continue anyway
+                }
+              });
+            };
+            await resumeWithTimeout();
+          } else {
+            // Standard resume for non-Firefox browsers
+            await strudelContext.resume();
+            console.log('✅ AudioContext resumed successfully');
+          }
+        } else {
+          console.log('✅ AudioContext already running:', strudelContext.state);
+        }
+      } else {
+        console.warn('⚠️ No AudioContext found for resumption');
+      }
+      
+    } catch (err) {
+      console.warn('🚨 Error in ensureGlobalAudioContextResumed:', err);
+    }
+  };
+
+  // Test AudioContext function for debugging
+  const testAudioContext = async () => {
+    console.log('🧪 Testing AudioContext...');
+    await ensureGlobalAudioContextResumed();
+    
+    // Additional diagnostics - check what's available in Strudel REPLs
+    if (window._dynamicStrudelRepls && window._dynamicStrudelRepls.size > 0) {
+      for (const [id, replRef] of window._dynamicStrudelRepls) {
+        const element = replRef.current;
+        if (element?.editor?.repl?.context) {
+          const ctx = element.editor.repl.context;
+          console.log(`🧪 REPL ${id} context keys:`, Object.keys(ctx));
+          console.log(`🧪 REPL ${id} has audioContext:`, !!ctx.audioContext);
+          console.log(`🧪 REPL ${id} has webaudio:`, !!ctx.webaudio);
+          console.log(`🧪 REPL ${id} has cyclist:`, !!ctx.cyclist);
+          
+          // Try to play a test pattern to verify audio
+          try {
+            if (element.editor.repl.evaluate) {
+              console.log(`🧪 Testing sound with REPL ${id}...`);
+              await element.editor.repl.evaluate('sound("bd").gain(0.3)');
+              setTimeout(() => {
+                if (element.editor.repl.start) {
+                  element.editor.repl.start();
+                  console.log(`✅ Test pattern started on REPL ${id}`);
+                  setTimeout(() => {
+                    if (element.editor.repl.stop) {
+                      element.editor.repl.stop();
+                      console.log(`🔇 Test pattern stopped on REPL ${id}`);
+                    }
+                  }, 1000);
+                }
+              }, 100);
+            }
+          } catch (err) {
+            console.error(`❌ Test pattern failed on REPL ${id}:`, err);
+          }
+          break; // Only test the first available REPL
+        }
+      }
+    } else {
+      console.warn('⚠️ No REPL instances available for testing');
+    }
+  };
+
+  // Debug Strudel internals to understand the audio architecture
+  const debugStrudelInternals = () => {
+    console.log('🔍 === STRUDEL INTERNALS DEBUG ===');
+    
+    // Check global window objects related to audio/strudel
+    const globalKeys = Object.keys(window).filter(key => 
+      key.toLowerCase().includes('audio') || 
+      key.toLowerCase().includes('strudel') || 
+      key.toLowerCase().includes('tone') ||
+      key.toLowerCase().includes('context') ||
+      key.toLowerCase().includes('cyclist')
+    );
+    console.log('🔍 Global keys with audio/strudel:', globalKeys);
+    
+    // Check for common audio libraries
+    console.log('🔍 Audio libraries available:');
+    console.log('  - Tone.js:', !!window.Tone);
+    console.log('  - Web Audio API:', !!window.AudioContext);
+    console.log('  - Strudel (global):', !!window.strudel);
+    
+    // Check REPL instances in detail
+    if (window._dynamicStrudelRepls && window._dynamicStrudelRepls.size > 0) {
+      for (const [id, replRef] of window._dynamicStrudelRepls) {
+        const element = replRef.current;
+        console.log(`🔍 === REPL ${id} INTERNALS ===`);
+        
+        if (element) {
+          console.log(`🔍 Element properties:`, Object.getOwnPropertyNames(element));
+          
+          if (element.editor) {
+            console.log(`🔍 Editor properties:`, Object.getOwnPropertyNames(element.editor));
+            
+            if (element.editor.repl) {
+              const repl = element.editor.repl;
+              console.log(`🔍 REPL properties:`, Object.getOwnPropertyNames(repl));
+              
+              // Dig deeper into scheduler - this likely contains cyclist
+              if (repl.scheduler) {
+                console.log(`🔍 REPL scheduler properties:`, Object.getOwnPropertyNames(repl.scheduler));
+                
+                // Show all scheduler properties and their types to find AudioContext
+                Object.getOwnPropertyNames(repl.scheduler).forEach(prop => {
+                  const value = repl.scheduler[prop];
+                  const type = typeof value;
+                  const constructor = value && typeof value === 'object' ? value.constructor.name : 'N/A';
+                  console.log(`🔍   scheduler.${prop}: ${type} (${constructor})`);
+                  
+                  // Special detailed inspection for worker and channel
+                  if (prop === 'worker' && value && typeof value === 'object') {
+                    console.log(`🔍     🔧 WORKER DEEP INSPECTION:`);
+                    console.log(`🔍     worker properties:`, Object.getOwnPropertyNames(value));
+                    Object.getOwnPropertyNames(value).forEach(workerProp => {
+                      const workerValue = value[workerProp];
+                      const workerType = typeof workerValue;
+                      const workerConstructor = workerValue && typeof workerValue === 'object' ? workerValue.constructor.name : 'N/A';
+                      console.log(`🔍       worker.${workerProp}: ${workerType} (${workerConstructor})`);
+                      
+                      // Look for AudioContext in worker
+                      if (workerValue && typeof workerValue === 'object' && 
+                          (workerProp.toLowerCase().includes('audio') || 
+                           workerProp.toLowerCase().includes('context') ||
+                           workerConstructor.includes('Audio') ||
+                           workerConstructor.includes('Context'))) {
+                        console.log(`🔍         ✨ worker.${workerProp} might be AudioContext!`, workerValue);
+                        if (workerValue.state !== undefined) {
+                          console.log(`🔍         ✨ worker.${workerProp} state:`, workerValue.state);
+                        }
+                      }
+                    });
+                  }
+                  
+                  if (prop === 'channel' && value && typeof value === 'object') {
+                    console.log(`🔍     📡 CHANNEL DEEP INSPECTION:`);
+                    console.log(`🔍     channel properties:`, Object.getOwnPropertyNames(value));
+                    Object.getOwnPropertyNames(value).forEach(channelProp => {
+                      const channelValue = value[channelProp];
+                      const channelType = typeof channelValue;
+                      const channelConstructor = channelValue && typeof channelValue === 'object' ? channelValue.constructor.name : 'N/A';
+                      console.log(`🔍       channel.${channelProp}: ${channelType} (${channelConstructor})`);
+                      
+                      // Look for AudioContext in channel
+                      if (channelValue && typeof channelValue === 'object' && 
+                          (channelProp.toLowerCase().includes('audio') || 
+                           channelProp.toLowerCase().includes('context') ||
+                           channelConstructor.includes('Audio') ||
+                           channelConstructor.includes('Context'))) {
+                        console.log(`🔍         ✨ channel.${channelProp} might be AudioContext!`, channelValue);
+                        if (channelValue.state !== undefined) {
+                          console.log(`🔍         ✨ channel.${channelProp} state:`, channelValue.state);
+                        }
+                      }
+                    });
+                  }
+                  
+                  // If it looks like it might contain an AudioContext, inspect further
+                  if (value && typeof value === 'object' && 
+                      (prop.toLowerCase().includes('audio') || 
+                       prop.toLowerCase().includes('context') ||
+                       prop.toLowerCase().includes('output') ||
+                       constructor.includes('Audio') ||
+                       constructor.includes('Context'))) {
+                    console.log(`🔍     ${prop} properties:`, Object.getOwnPropertyNames(value));
+                    
+                    // Check if this object has AudioContext-like properties
+                    if (value.state !== undefined && typeof value.resume === 'function') {
+                      console.log(`🔍     ✨ ${prop} looks like an AudioContext! State: ${value.state}`);
+                    }
+                  }
+                });
+                
+                // Look for cyclist in scheduler
+                if (repl.scheduler.context) {
+                  console.log(`🔍 Scheduler context properties:`, Object.getOwnPropertyNames(repl.scheduler.context));
+                  
+                  // Check for AudioContext in scheduler context
+                  const ctx = repl.scheduler.context;
+                  Object.getOwnPropertyNames(ctx).forEach(prop => {
+                    const value = ctx[prop];
+                    if (prop.toLowerCase().includes('audio') || 
+                        prop.toLowerCase().includes('context') ||
+                        prop.toLowerCase().includes('cyclist') ||
+                        (value && typeof value === 'object' && value.constructor && 
+                         (value.constructor.name.includes('Audio') || 
+                          value.constructor.name.includes('Context')))) {
+                      console.log(`🔍 Scheduler context audio property '${prop}':`, value);
+                      
+                      if (value && typeof value === 'object') {
+                        console.log(`🔍   ${prop} properties:`, Object.getOwnPropertyNames(value));
+                        
+                        // If it looks like an AudioContext, log its state
+                        if (value.state !== undefined) {
+                          console.log(`🔍   ${prop} state:`, value.state);
+                        }
+                      }
+                    }
+                  });
+                }
+                
+                // Also check if scheduler itself has AudioContext properties
+                Object.getOwnPropertyNames(repl.scheduler).forEach(prop => {
+                  const value = repl.scheduler[prop];
+                  if (prop.toLowerCase().includes('audio') || 
+                      prop.toLowerCase().includes('context') ||
+                      (value && typeof value === 'object' && value.constructor && 
+                       (value.constructor.name.includes('Audio') || 
+                        value.constructor.name.includes('Context')))) {
+                    console.log(`🔍 Scheduler audio property '${prop}':`, value);
+                    
+                    if (value && typeof value === 'object' && value.state !== undefined) {
+                      console.log(`🔍   ${prop} state:`, value.state);
+                    }
+                  }
+                });
+              }
+              
+              if (repl.context) {
+                const ctx = repl.context;
+                console.log(`🔍 REPL context properties:`, Object.getOwnPropertyNames(ctx));
+                
+                // Look for audio-related properties
+                Object.getOwnPropertyNames(ctx).forEach(prop => {
+                  const value = ctx[prop];
+                  if (prop.toLowerCase().includes('audio') || 
+                      prop.toLowerCase().includes('context') ||
+                      prop.toLowerCase().includes('cyclist') ||
+                      (value && typeof value === 'object' && value.constructor && 
+                       (value.constructor.name.includes('Audio') || 
+                        value.constructor.name.includes('Context')))) {
+                    console.log(`🔍 Audio-related property '${prop}':`, value);
+                    
+                    if (value && typeof value === 'object') {
+                      console.log(`🔍   ${prop} properties:`, Object.getOwnPropertyNames(value));
+                      
+                      // If it looks like an AudioContext, log its state
+                      if (value.state !== undefined) {
+                        console.log(`🔍   ${prop} state:`, value.state);
+                      }
+                    }
+                  }
+                });
+                
+                // Special check for cyclist (seems to be Strudel's audio engine)
+                if (ctx.cyclist) {
+                  console.log('🔍 Cyclist (audio engine) details:');
+                  console.log('🔍   cyclist properties:', Object.getOwnPropertyNames(ctx.cyclist));
+                  
+                  // Try to find the AudioContext in cyclist
+                  if (ctx.cyclist.ac || ctx.cyclist.audioContext || ctx.cyclist.context) {
+                    const audioCtx = ctx.cyclist.ac || ctx.cyclist.audioContext || ctx.cyclist.context;
+                    console.log('🔍   cyclist AudioContext found:', audioCtx);
+                    console.log('🔍   cyclist AudioContext state:', audioCtx.state);
+                  }
+                }
+              }
+            }
+          }
+        }
+        break; // Only debug the first REPL in detail
+      }
+    } else {
+      console.log('🔍 No REPL instances available for debugging');
+    }
+    
+    console.log('🔍 === END STRUDEL INTERNALS DEBUG ===');
   };
 
   // Function to actually stop all playing REPLs across all instances
@@ -158,9 +583,11 @@ const DynamicStrudelTest = () => {
         }
       };
 
-      const startThisREPL = () => {
+      const startThisREPL = async () => {
         if (replRef.current?.editor?.repl && !isPlaying) {
           console.log(`ReplInstance: Global start triggered for REPL ${instance.id}`);
+          // Ensure AudioContext is resumed before starting
+          await ensureAudioContextResumed();
           // Prefer explicit start() if available to avoid unintended stop
           if (replRef.current.editor.repl.start) {
             try { replRef.current.editor.repl.start(); } catch {}
@@ -304,16 +731,134 @@ const DynamicStrudelTest = () => {
       };
     }, [instance.id, isPlaying]);
 
-    // Handle functions - exactly like StrudelReplTest (no exclusive playback)
-    const handleToggle = () => {
-      if (replRef.current?.editor?.repl) {
-        replRef.current.editor.toggle();
-        setIsPlaying(prev => !prev);
-        console.log(`DynamicStrudelTest: Toggled REPL ${instance.id}`);
-      }
-    };
+  // Handle functions - exactly like StrudelReplTest (no exclusive playback)
+  const handleToggle = async () => {
+    if (replRef.current?.editor?.repl) {
+      // Before toggling, ensure AudioContext is resumed (especially for Firefox)
+      await ensureAudioContextResumed();
+      replRef.current.editor.toggle();
+      setIsPlaying(prev => !prev);
+      console.log(`DynamicStrudelTest: Toggled REPL ${instance.id}`);
+    }
+  };
 
-    const handleStop = () => {
+  // Ensure AudioContext is resumed for Strudel/Tone.js - crucial for Firefox
+  const ensureAudioContextResumed = async () => {
+    try {
+      // Check if we're in Firefox (where AudioContext.resume() can hang)
+      const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
+      
+      // Method 1: Try to find AudioContext through this REPL instance
+      let strudelContext = null;
+      
+      if (replRef.current?.editor?.repl) {
+        const repl = replRef.current.editor.repl;
+        
+        // First, try to find AudioContext in scheduler (where cyclist likely lives)
+        if (repl.scheduler) {
+          console.log('🔧 Checking scheduler for AudioContext...');
+          
+          // Check scheduler context
+          if (repl.scheduler.context) {
+            const schedulerCtx = repl.scheduler.context;
+            if (schedulerCtx.audioContext) {
+              strudelContext = schedulerCtx.audioContext;
+              console.log('🔧 Found audioContext in scheduler context');
+            } else if (schedulerCtx.webaudio && schedulerCtx.webaudio.context) {
+              strudelContext = schedulerCtx.webaudio.context;
+              console.log('🔧 Found webaudio context in scheduler context');
+            }
+          }
+          
+          // Check scheduler itself for audio properties
+          if (!strudelContext) {
+            Object.getOwnPropertyNames(repl.scheduler).forEach(prop => {
+              const value = repl.scheduler[prop];
+              if (!strudelContext && value && typeof value === 'object' && 
+                  (prop.toLowerCase().includes('audio') || prop.toLowerCase().includes('context')) &&
+                  typeof value.resume === 'function' && value.state !== undefined) {
+                strudelContext = value;
+                console.log(`🔧 Found AudioContext in scheduler.${prop}`);
+              }
+            });
+          }
+        }
+        
+        // Fallback: try REPL context
+        if (!strudelContext && repl.context) {
+          const replContext = repl.context;
+          
+          // Look for AudioContext in various possible locations
+          if (replContext.audioContext) {
+            strudelContext = replContext.audioContext;
+            console.log('🔧 Found audioContext in REPL context');
+          } else if (replContext.webaudio && replContext.webaudio.context) {
+            strudelContext = replContext.webaudio.context;
+            console.log('🔧 Found webaudio context in REPL context');
+          } else if (replContext.cyclist && replContext.cyclist.context) {
+            strudelContext = replContext.cyclist.context;
+            console.log('🔧 Found cyclist context in REPL context');
+          }
+        }
+      }
+      
+      // Method 2: Try Tone.js context if available
+      if (!strudelContext && window.Tone && window.Tone.context) {
+        strudelContext = window.Tone.context;
+        console.log('🔧 Using Tone.js context');
+      }
+      
+      // Method 3: Try global AudioContext
+      if (!strudelContext && window.audioContext) {
+        strudelContext = window.audioContext;
+        console.log('🔧 Using global audioContext');
+      }
+      
+      // Resume the context if found and suspended
+      if (strudelContext) {
+        console.log('🔧 AudioContext state:', strudelContext.state);
+        
+        if (strudelContext.state === 'suspended') {
+          console.log('🔧 Resuming AudioContext...');
+          
+          if (isFirefox) {
+            // Firefox-specific: Add timeout to prevent hanging
+            const resumeWithTimeout = () => {
+              return new Promise(async (resolve, reject) => {
+                const timeout = setTimeout(() => {
+                  console.warn('🚨 Firefox: AudioContext resume timeout after 3 seconds');
+                  resolve(); // Continue anyway
+                }, 3000);
+                
+                try {
+                  await strudelContext.resume();
+                  clearTimeout(timeout);
+                  console.log('✅ AudioContext resumed successfully');
+                  resolve();
+                } catch (err) {
+                  clearTimeout(timeout);
+                  console.warn('🚨 AudioContext resume failed:', err);
+                  resolve(); // Continue anyway
+                }
+              });
+            };
+            await resumeWithTimeout();
+          } else {
+            // Standard resume for non-Firefox browsers
+            await strudelContext.resume();
+            console.log('✅ AudioContext resumed successfully');
+          }
+        } else {
+          console.log('✅ AudioContext already running:', strudelContext.state);
+        }
+      } else {
+        console.warn('⚠️ No AudioContext found for this REPL instance');
+      }
+      
+    } catch (err) {
+      console.warn('🚨 Error in ensureAudioContextResumed:', err);
+    }
+  };    const handleStop = () => {
       if (replRef.current?.editor?.repl) {
         replRef.current.editor.repl.stop();
         setIsPlaying(false);
@@ -548,6 +1093,22 @@ const DynamicStrudelTest = () => {
             className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600"
           >
             Stop All
+          </button>
+          
+          <button
+            onClick={testAudioContext}
+            className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600"
+            title="Test AudioContext and play a beep"
+          >
+            Test Audio
+          </button>
+          
+          <button
+            onClick={debugStrudelInternals}
+            className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600"
+            title="Debug Strudel internals to find audio system"
+          >
+            Debug Strudel
           </button>
           
           <div className="ml-auto text-sm text-gray-600 flex items-center">
