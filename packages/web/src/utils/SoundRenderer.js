@@ -1,11 +1,11 @@
 import { getRestServiceHost, REST_ENDPOINTS, getLineageSoundsBucketHost } from '../constants';
 
-// WebSocket server URL based on environment
-// Use secure WebSocket (wss://) in production, regular WebSocket (ws://) in development
-const RENDERING_SOCKET_SERVER = window.location.hostname === 'localhost' || 
-                               window.location.hostname === '127.0.0.1'
-  ? 'ws://localhost:3000'
-  : 'wss://rendering.synth.is';
+// WebSocket server URL loaded from Vite environment variable
+const RENDERING_SOCKET_SERVER =
+  import.meta.env.VITE_RENDERING_SOCKET_SERVER ||
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'ws://localhost:3000'
+    : 'wss://rendering.synth.is');
 
 // Create a worker blob to handle WebSocket communication off the main thread
 const createWebSocketWorker = () => {

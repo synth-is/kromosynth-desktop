@@ -12,7 +12,7 @@ export default defineConfig({
     sourcemap: true,
   },
   server: {
-    https: false,
+    https: true,
     port: 5173,
     strictPort: true,
     fs: {
