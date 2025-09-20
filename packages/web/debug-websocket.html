@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Debug Tool</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .log { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e9; color: #2e7d32; }
+        .info { background: #e3f2fd; color: #1565c0; }
+        button { padding: 10px 20px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Debug Tool</h1>
+    <p>Browser: <span id="browser"></span></p>
+    
+    <button onclick="testConnection()">Test WebSocket Connection</button>
+    <button onclick="sendTestMessage()">Send Test Message</button>
+    <button onclick="clearLogs()">Clear Logs</button>
+    
+    <div id="logs"></div>
+
+    <script>
+        let socket = null;
+        
+        // Detect browser
+        const userAgent = navigator.userAgent;
+        const isFirefox = userAgent.toLowerCase().indexOf('firefox') > -1;
+        const isChrome = userAgent.toLowerCase().indexOf('chrome') > -1;
+        document.getElementById('browser').textContent = isFirefox ? 'Firefox' : (isChrome ? 'Chrome' : 'Other');
+        
+        function log(message, type = 'info') {
+            const logs = document.getElementById('logs');
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logs.appendChild(div);
+            logs.scrollTop = logs.scrollHeight;
+            console.log(message);
+        }
+        
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+        
+        function testConnection() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                log('WebSocket already connected', 'success');
+                return;
+            }
+            
+            log('Attempting to connect to wss://rendering.synth.is...', 'info');
+            
+            try {
+                socket = new WebSocket('wss://rendering.synth.is');
+                socket.binaryType = 'arraybuffer';
+                
+                socket.onopen = () => {
+                    log('✅ WebSocket connected successfully!', 'success');
+                };
+                
+                socket.onmessage = (event) => {
+                    if (event.data instanceof ArrayBuffer) {
+                        log(`📦 Received binary data: ${event.data.byteLength} bytes`, 'success');
+                    } else {
+                        log(`📝 Received text data: ${event.data}`, 'info');
+                    }
+                };
+                
+                socket.onclose = (event) => {
+                    log(`🔌 WebSocket closed: ${event.code} - ${event.reason}`, 'error');
+                };
+                
+                socket.onerror = (error) => {
+                    log(`❌ WebSocket error: ${error}`, 'error');
+                };
+                
+            } catch (error) {
+                log(`❌ Failed to create WebSocket: ${error.message}`, 'error');
+            }
+        }
+        
+        function sendTestMessage() {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                log('❌ WebSocket not connected. Connect first.', 'error');
+                return;
+            }
+            
+            const testMessage = JSON.stringify({
+                type: 'get_audio_data',
+                genomeStringUrl: 'https://sounds-lineage.s3.eu-west-1.amazonaws.com/evoruns/2024-05-11T21%3A51%3A54.043Z_kromosynth-evaluate-bp_48k-sr_NSGA2-spea2_250gen/genome_2024-05-11T21%3A51%3A54.043Z_kromosynth-evaluate-bp_48k-sr_NSGA2-spea2_250gen_0-0-0-0-0-0-0-0-1.json.gz',
+                duration: 5,
+                noteDelta: 0,
+                velocity: 0.8,
+                reverse: false,
+                useOvertoneInharmonicityFactors: true,
+                antiAliasing: false,
+                frequencyUpdatesApplyToAllPathcNetworkOutputs: false,
+                sampleRate: 48000,
+            });
+            
+            log('📤 Sending test render request...', 'info');
+            socket.send(testMessage);
+        }
+        
+        // Auto-connect on page load
+        window.addEventListener('load', () => {
+            setTimeout(testConnection, 1000);
+        });
+    </script>
+</body>
+</html>
