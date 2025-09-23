@@ -19,7 +19,11 @@ import HeatmapViewer from './components/HeatmapViewer';
 import StrudelReplTest from './components/StrudelReplTest';
 import DynamicStrudelTest from './components/DynamicStrudelTest';
 import DynamicStrudelTestSimple from './components/DynamicStrudelTestSimple';
+import FeedView from './components/FeedView';
+import SoundGarden from './components/SoundGarden';
+import NavigationBar from './components/NavigationBar';
 import { StrudelPatternProvider } from './components/strudelPatternContext';
+import { AuthProvider } from './contexts/AuthContext';
 import { DEFAULT_STRUDEL_CODE, LINEAGE_SOUNDS_BUCKET_HOST, UNIT_TYPES, DEFAULT_UNIT_CONFIGS, getRestServiceHost, REST_ENDPOINTS } from './constants';
 import { UnitsProvider, useUnits } from './UnitsContext';
 import { setupVisualFeedbackMonitoring } from './utils/visualFeedbackTest';
@@ -312,7 +316,7 @@ function MainContent({
 }) {
   // Show a persistent error banner at the bottom if soundSourceError, but keep all UI accessible
   return (
-    <div className="fixed inset-0 flex flex-col bg-gray-950">
+    <div className="h-full flex flex-col bg-gray-950">
       {/* TopBar always at the top */}
       <div>
         <TopBar {...props} runs={Object.keys(lineageTreesIndex || {})} evorunsSummary={evorunsSummary} steps={lineageTreesIndex ? lineageTreesIndex[props.selectedRun]?.length || 0 : 0} lineageTreesIndex={lineageTreesIndex} />
@@ -835,36 +839,48 @@ function MainApp() {
   };
 
 
-  return <MainContent 
-    lineageTreesIndex={lineageTreesIndex}
-    evorunsSummary={evorunsSummary}
-    treeData={treeData}
-    soundSourceError={soundSourceError}
-    showUnits={showUnits}
-    setShowUnits={setShowUnits}
-    selectedRun={selectedRun}
-    handleRunChange={handleRunChange}
-    selectedIndex={selectedIndex}
-    handleIndexChange={handleIndexChange}
-    showSettings={showSettings}
-    setShowSettings={setShowSettings}
-    currentView={currentView}
-    handleViewChange={handleViewChange}
-    units={units}
-    playingUnits={playingUnits}
-    handleUnitPlaybackChange={handleUnitPlaybackChange}
-    selectedUnitId={selectedUnitId}
-    handleSelectUnit={handleSelectUnit}
-    handleAddUnit={handleAddUnit}
-    handleRemoveUnit={handleRemoveUnit}
-    handleToggleState={handleToggleState}
-    handleUpdateVolume={handleUpdateVolume}
-    handleUpdateUnit={handleUpdateUnit}
-    hasAudioInteraction={hasAudioInteraction}
-    setHasAudioInteraction={setHasAudioInteraction}
-    handleCellHover={handleCellHover}
-    lastHoverData={lastHoverData}
-  />;
+  return (
+    <div className="h-screen w-screen flex flex-col bg-gray-950">
+      {/* Main Navigation Bar - Fixed */}
+      <div className="sticky top-0 z-50 bg-gray-900 border-b border-gray-700 px-2 md:px-4 py-3 shadow-sm">
+        <NavigationBar />
+      </div>
+      
+      {/* Tree View Content */}
+      <div className="flex-1 w-full">
+        <MainContent 
+          lineageTreesIndex={lineageTreesIndex}
+          evorunsSummary={evorunsSummary}
+          treeData={treeData}
+          soundSourceError={soundSourceError}
+          showUnits={showUnits}
+          setShowUnits={setShowUnits}
+          selectedRun={selectedRun}
+          handleRunChange={handleRunChange}
+          selectedIndex={selectedIndex}
+          handleIndexChange={handleIndexChange}
+          showSettings={showSettings}
+          setShowSettings={setShowSettings}
+          currentView={currentView}
+          handleViewChange={handleViewChange}
+          units={units}
+          playingUnits={playingUnits}
+          handleUnitPlaybackChange={handleUnitPlaybackChange}
+          selectedUnitId={selectedUnitId}
+          handleSelectUnit={handleSelectUnit}
+          handleAddUnit={handleAddUnit}
+          handleRemoveUnit={handleRemoveUnit}
+          handleToggleState={handleToggleState}
+          handleUpdateVolume={handleUpdateVolume}
+          handleUpdateUnit={handleUpdateUnit}
+          hasAudioInteraction={hasAudioInteraction}
+          setHasAudioInteraction={setHasAudioInteraction}
+          handleCellHover={handleCellHover}
+          lastHoverData={lastHoverData}
+        />
+      </div>
+    </div>
+  );
 }
 
 // Create router with future flags
@@ -874,7 +890,10 @@ const router = createBrowserRouter(
       <Route path="/strudel-repl-test" element={<StrudelReplTest />} />
       <Route path="/dynamic-strudel-test" element={<DynamicStrudelTest />} />
       <Route path="/dynamic-strudel-test-simple" element={<DynamicStrudelTestSimple />} />
-      <Route path="/" element={<MainApp />} />
+      <Route path="/" element={<FeedApp />} />
+      <Route path="/feed" element={<Navigate to="/" replace />} />
+      <Route path="/garden" element={<GardenApp />} />
+      <Route path="/tree" element={<TreeApp />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Route>
   ),
@@ -887,13 +906,70 @@ const router = createBrowserRouter(
   }
 );
 
+// Tree App wrapper
+function TreeApp() {
+  return <MainApp />;
+}
+
+// Feed App wrapper
+function FeedApp() {
+  return (
+    <div className="h-screen w-screen flex flex-col bg-gray-950">
+      <div className="sticky top-0 z-50 bg-gray-900 border-b border-gray-700 px-2 md:px-4 py-3 shadow-sm">
+        <NavigationBar />
+      </div>
+      <div className="flex-1 w-full">
+        <FeedView 
+          onNavigateToTree={(simulationId, soundId) => {
+            // Navigate to main app with specific simulation and sound
+            const params = new URLSearchParams();
+            params.set('run', simulationId);
+            params.set('view', 'tree');
+            if (soundId) {
+              params.set('highlight', soundId);
+            }
+            window.location.href = '/tree?' + params.toString();
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// Garden App wrapper
+function GardenApp() {
+  return (
+    <div className="h-screen w-screen flex flex-col bg-gray-950">
+      <div className="sticky top-0 z-50 bg-gray-900 border-b border-gray-700 px-2 md:px-4 py-3 shadow-sm">
+        <NavigationBar />
+      </div>
+      <div className="flex-1 w-full">
+        <SoundGarden 
+          onNavigateToTree={(simulationId, soundId) => {
+            // Navigate to main app with specific simulation and sound
+            const params = new URLSearchParams();
+            params.set('run', simulationId);
+            params.set('view', 'tree');
+            if (soundId) {
+              params.set('highlight', soundId);
+            }
+            window.location.href = '/tree?' + params.toString();
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function App() {
   return (
-    <StrudelPatternProvider>
-      <UnitsProvider>
-        <RouterProvider router={router} />
-      </UnitsProvider>
-    </StrudelPatternProvider>
+    <AuthProvider>
+      <StrudelPatternProvider>
+        <UnitsProvider>
+          <RouterProvider router={router} />
+        </UnitsProvider>
+      </StrudelPatternProvider>
+    </AuthProvider>
   );
 }
 

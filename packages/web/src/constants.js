@@ -21,6 +21,20 @@ export const DEFAULT_REST_SERVICE_HOST =
     ? 'http://localhost:3004'
     : 'https://api.synth.is');
 
+// Default recommendation service configuration
+export const DEFAULT_RECOMMEND_SERVICE_HOST =
+  import.meta.env.VITE_RECOMMEND_SERVICE_URL ||
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3004'
+    : 'https://recommend.synth.is');
+
+// Default auth service configuration
+export const DEFAULT_AUTH_SERVICE_HOST =
+  import.meta.env.VITE_AUTH_SERVICE_URL ||
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3002'
+    : 'https://auth.synth.is');
+
 // Get the current host URL (custom from localStorage or default)
 export const getLineageSoundsBucketHost = () => {
   const customUrl = localStorage.getItem('CUSTOM_LINEAGE_SOUNDS_URL');
