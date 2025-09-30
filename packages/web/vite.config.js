@@ -12,7 +12,7 @@ export default defineConfig({
     sourcemap: true,
   },
   server: {
-    https: true,
+    https: false, // Disabled for development with kromosynth-auth
     port: 5173,
     strictPort: true,
     fs: {

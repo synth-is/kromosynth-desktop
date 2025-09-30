@@ -1,14 +1,15 @@
 /**
- * Mock Authentication Service
- * In production, this would integrate with kromosynth-auth
+ * Authentication Service - kromosynth-auth integration
+ * Connects to the kromosynth-auth microservice for user management
  */
 
-const AUTH_SERVICE_BASE_URL = import.meta.env.VITE_AUTH_SERVICE_URL || 'http://localhost:3002';
+const AUTH_SERVICE_BASE_URL = import.meta.env.VITE_AUTH_SERVICE_URL || 'http://127.0.0.1:3002';
 
 export class AuthService {
   constructor() {
     this.baseURL = AUTH_SERVICE_BASE_URL;
     this.currentUser = null;
+    this.token = null;
     this.initialized = false;
   }
 
@@ -22,63 +23,135 @@ export class AuthService {
       // Try to restore session from localStorage
       const token = localStorage.getItem('kromosynth_token');
       const userData = localStorage.getItem('kromosynth_user');
+      const tokenExpiry = localStorage.getItem('kromosynth_token_expiry');
 
       if (token && userData) {
+        this.token = token;
         this.currentUser = JSON.parse(userData);
-        // In production, we would validate the token with the auth service
-        console.log('Restored user session:', this.currentUser);
+        
+        // Check if token is expired
+        const now = Date.now();
+        const expiry = tokenExpiry ? parseInt(tokenExpiry) : 0;
+        
+        if (expiry > now) {
+          // Token still valid, try to use it
+          try {
+            const profile = await this.getProfile();
+            this.currentUser = profile.user;
+            this.saveSession();
+            console.log('Session restored:', this.currentUser.username);
+          } catch (error) {
+            console.warn('Stored token validation failed, trying refresh');
+            // Try to refresh the token
+            const refreshed = await this.refreshToken();
+            if (!refreshed.success) {
+              console.warn('Token refresh failed, creating new anonymous user');
+              await this.createAnonymousUser();
+            } else {
+              console.log('Token refreshed successfully');
+            }
+          }
+        } else {
+          console.warn('Token expired, creating new anonymous user');
+          await this.createAnonymousUser();
+        }
       } else {
-        // For development, create a mock user
-        this.currentUser = this.createMockUser();
-        this.saveSession();
+        // No existing session - create anonymous user
+        await this.createAnonymousUser();
       }
 
       this.initialized = true;
     } catch (error) {
       console.error('Error initializing auth service:', error);
-      // Fallback to mock user
-      this.currentUser = this.createMockUser();
-      this.saveSession();
+      // Fallback: still create anonymous user
+      try {
+        await this.createAnonymousUser();
+      } catch (fallbackError) {
+        console.error('Could not create anonymous user:', fallbackError);
+      }
       this.initialized = true;
     }
   }
 
   /**
-   * Create a mock user for development
+   * Create anonymous user for instant access
    */
-  createMockUser() {
-    return {
-      id: 'mock-user-123',
-      username: 'demo_user',
-      email: 'demo@kromosynth.com',
-      displayName: 'Demo User',
-      subscriptionTier: 'pro',
-      joinDate: new Date('2024-01-01').toISOString(),
-      lastActive: new Date().toISOString(),
-      preferences: {
-        preferredGenres: ['experimental', 'ambient'],
-        preferredSynthesisTypes: ['granular', 'fm'],
-        discoveryTolerance: 0.7,
-        recommendationFrequency: 'moderate'
-      },
-      stats: {
-        soundsLiked: 42,
-        soundsAdopted: 15,
-        sessionsCount: 28,
-        totalPlayTime: 3600, // seconds
-        soundsDiscovered: 156
+  async createAnonymousUser() {
+    try {
+      const response = await fetch(`${this.baseURL}/api/auth/anonymous`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-    };
+
+      const result = await response.json();
+      
+      if (result.success) {
+        this.token = result.data.token;
+        this.currentUser = result.data.user;
+        this.saveSession();
+        console.log('Anonymous user created:', this.currentUser.username);
+        return result.data;
+      } else {
+        throw new Error(result.error || 'Anonymous user creation failed');
+      }
+    } catch (error) {
+      console.error('Create anonymous user error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get current user profile from auth service
+   */
+  async getProfile() {
+    try {
+      const response = await fetch(`${this.baseURL}/api/auth/profile`, {
+        headers: this.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        return result.data;
+      } else {
+        throw new Error(result.error || 'Get profile failed');
+      }
+    } catch (error) {
+      console.error('Get profile error:', error);
+      throw error;
+    }
   }
 
   /**
    * Save current session to localStorage
    */
   saveSession() {
-    if (this.currentUser) {
-      localStorage.setItem('kromosynth_token', 'mock-jwt-token-' + Date.now());
+    if (this.currentUser && this.token) {
+      localStorage.setItem('kromosynth_token', this.token);
       localStorage.setItem('kromosynth_user', JSON.stringify(this.currentUser));
+      // Store token expiry (24 hours from now by default)
+      const expiry = Date.now() + (24 * 60 * 60 * 1000);
+      localStorage.setItem('kromosynth_token_expiry', expiry.toString());
     }
+  }
+
+  /**
+   * Clear session from localStorage
+   */
+  clearSession() {
+    localStorage.removeItem('kromosynth_token');
+    localStorage.removeItem('kromosynth_user');
+    localStorage.removeItem('kromosynth_token_expiry');
+    this.token = null;
+    this.currentUser = null;
   }
 
   /**
@@ -92,49 +165,166 @@ export class AuthService {
    * Check if user is authenticated
    */
   isAuthenticated() {
-    return !!this.currentUser;
+    return !!this.currentUser && !!this.token;
   }
 
   /**
-   * Mock login (in production this would call kromosynth-auth)
+   * Check if current user is anonymous
    */
-  async login(username, password) {
+  isAnonymous() {
+    return this.currentUser?.isAnonymous === true;
+  }
+
+  /**
+   * Login with email and password
+   */
+  async login(email, password) {
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const response = await fetch(`${this.baseURL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
 
-      // For development, accept any credentials
-      this.currentUser = {
-        ...this.createMockUser(),
-        username: username || 'demo_user',
-        email: `${username || 'demo'}@kromosynth.com`,
-        displayName: username || 'Demo User'
-      };
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
-      this.saveSession();
+      const result = await response.json();
 
-      return {
-        success: true,
-        user: this.currentUser,
-        token: localStorage.getItem('kromosynth_token')
-      };
+      if (result.success) {
+        this.token = result.data.token;
+        this.currentUser = result.data.user;
+        this.saveSession();
+        return {
+          success: true,
+          user: this.currentUser,
+          token: this.token
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || 'Login failed'
+        };
+      }
     } catch (error) {
       console.error('Login error:', error);
       return {
         success: false,
-        error: 'Login failed'
+        error: error.message || 'Login failed'
       };
     }
   }
 
   /**
-   * Mock logout
+   * Register new user account
+   */
+  async register(email, password, username, displayName) {
+    try {
+      const response = await fetch(`${this.baseURL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, username, displayName })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        this.token = result.data.token;
+        this.currentUser = result.data.user;
+        this.saveSession();
+        return {
+          success: true,
+          user: this.currentUser,
+          token: this.token
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || result.message || 'Registration failed'
+        };
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      return {
+        success: false,
+        error: error.message || 'Registration failed'
+      };
+    }
+  }
+
+  /**
+   * Convert anonymous user to registered account
+   */
+  async convertAnonymous(email, password, username, displayName) {
+    try {
+      if (!this.isAnonymous()) {
+        return {
+          success: false,
+          error: 'User is not anonymous'
+        };
+      }
+
+      const response = await fetch(`${this.baseURL}/api/auth/convert`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ email, password, username, displayName })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        this.token = result.data.token;
+        this.currentUser = result.data.user;
+        this.saveSession();
+        console.log('Anonymous user converted to registered account');
+        return {
+          success: true,
+          user: this.currentUser,
+          token: this.token
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || result.message || 'Conversion failed'
+        };
+      }
+    } catch (error) {
+      console.error('Conversion error:', error);
+      return {
+        success: false,
+        error: error.message || 'Conversion failed'
+      };
+    }
+  }
+
+  /**
+   * Logout
    */
   async logout() {
-    this.currentUser = null;
-    localStorage.removeItem('kromosynth_token');
-    localStorage.removeItem('kromosynth_user');
-    
+    try {
+      if (this.token) {
+        await fetch(`${this.baseURL}/api/auth/logout`, {
+          method: 'POST',
+          headers: this.getAuthHeaders()
+        });
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      this.clearSession();
+      // Create new anonymous user after logout
+      await this.createAnonymousUser();
+    }
+
     return { success: true };
   }
 
@@ -146,17 +336,33 @@ export class AuthService {
       throw new Error('No authenticated user');
     }
 
-    this.currentUser.preferences = {
-      ...this.currentUser.preferences,
-      ...preferences
-    };
+    try {
+      const response = await fetch(`${this.baseURL}/api/auth/preferences`, {
+        method: 'PUT',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ preferences })
+      });
 
-    this.saveSession();
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
-    return {
-      success: true,
-      user: this.currentUser
-    };
+      const result = await response.json();
+
+      if (result.success) {
+        this.currentUser.preferences = result.data.preferences;
+        this.saveSession();
+        return {
+          success: true,
+          user: this.currentUser
+        };
+      } else {
+        throw new Error(result.error || 'Update preferences failed');
+      }
+    } catch (error) {
+      console.error('Update preferences error:', error);
+      throw error;
+    }
   }
 
   /**
@@ -167,7 +373,6 @@ export class AuthService {
       throw new Error('No authenticated user');
     }
 
-    // In production, this would fetch from the auth service
     return {
       success: true,
       stats: this.currentUser.stats
@@ -177,27 +382,103 @@ export class AuthService {
   /**
    * Update user statistics (for tracking usage)
    */
-  updateStats(statUpdates) {
+  async updateStats(statUpdates) {
     if (!this.currentUser) return;
 
-    this.currentUser.stats = {
-      ...this.currentUser.stats,
-      ...statUpdates,
-      lastActive: new Date().toISOString()
-    };
+    try {
+      const updatedStats = {
+        ...this.currentUser.stats,
+        ...statUpdates
+      };
 
-    this.saveSession();
+      const response = await fetch(`${this.baseURL}/api/auth/stats`, {
+        method: 'PUT',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ stats: updatedStats })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        this.currentUser.stats = result.data.stats;
+        this.saveSession();
+      }
+    } catch (error) {
+      console.error('Update stats error:', error);
+      // Don't throw - stats updates are non-critical
+    }
+  }
+
+  /**
+   * Refresh authentication token
+   */
+  async refreshToken() {
+    try {
+      const response = await fetch(`${this.baseURL}/api/auth/refresh`, {
+        method: 'POST',
+        headers: this.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        this.token = result.data.token;
+        this.currentUser = result.data.user;
+        this.saveSession();
+        return { success: true };
+      } else {
+        throw new Error(result.error || 'Token refresh failed');
+      }
+    } catch (error) {
+      console.error('Token refresh error:', error);
+      // If token refresh fails, clear session and create new anonymous user
+      this.clearSession();
+      await this.createAnonymousUser();
+      return { success: false };
+    }
   }
 
   /**
    * Get auth headers for API requests
    */
   getAuthHeaders() {
-    const token = localStorage.getItem('kromosynth_token');
     return {
-      'Authorization': `Bearer ${token}`,
+      'Authorization': `Bearer ${this.token}`,
       'Content-Type': 'application/json'
     };
+  }
+
+  /**
+   * Generate a creative username suggestion
+   */
+  async generateUsername() {
+    try {
+      const response = await fetch(`${this.baseURL}/api/auth/generate-username`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        return result.data.username;
+      } else {
+        throw new Error(result.error || 'Username generation failed');
+      }
+    } catch (error) {
+      console.error('Generate username error:', error);
+      // Fallback to simple username
+      return `User${Math.floor(Math.random() * 9999)}`;
+    }
   }
 }
 
