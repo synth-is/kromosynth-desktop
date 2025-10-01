@@ -4,14 +4,16 @@
 
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { TreePine, Heart, Sparkles, UserPlus, User, LogOut } from 'lucide-react';
+import { TreePine, Heart, Sparkles, UserPlus, User, LogOut, LogIn } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import ConvertAccountModal from './ConvertAccountModal.jsx';
+import LoginModal from './LoginModal.jsx';
 
 const NavigationBar = ({ className = '' }) => {
   const location = useLocation();
-  const { isAuthenticated, user, isAnonymous, convertAnonymous, logout } = useAuth();
+  const { isAuthenticated, user, isAnonymous, convertAnonymous, login, logout } = useAuth();
   const [showConvertModal, setShowConvertModal] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   const navigationItems = [
@@ -49,8 +51,18 @@ const NavigationBar = ({ className = '' }) => {
     
     if (result.success) {
       setShowConvertModal(false);
-      // Could show success toast here
       console.log('Account created successfully!');
+    }
+    
+    return result;
+  };
+
+  const handleLogin = async (email, password) => {
+    const result = await login(email, password);
+    
+    if (result.success) {
+      setShowLoginModal(false);
+      console.log('Login successful!');
     }
     
     return result;
@@ -112,16 +124,26 @@ const NavigationBar = ({ className = '' }) => {
         {/* User Section */}
         {isAuthenticated && user && (
           <div className="flex items-center gap-2">
-            {/* Anonymous User - Show Create Account Button */}
+            {/* Anonymous User - Show Create Account and Sign In Buttons */}
             {isAnonymous() && (
-              <button
-                onClick={() => setShowConvertModal(true)}
-                className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors shadow-lg"
-                title="Create your permanent account"
-              >
-                <UserPlus size={16} />
-                <span className="hidden sm:inline">Create Account</span>
-              </button>
+              <>
+                <button
+                  onClick={() => setShowLoginModal(true)}
+                  className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                  title="Sign in with existing account"
+                >
+                  <LogIn size={16} />
+                  <span className="hidden sm:inline">Sign In</span>
+                </button>
+                <button
+                  onClick={() => setShowConvertModal(true)}
+                  className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors shadow-lg"
+                  title="Create your permanent account"
+                >
+                  <UserPlus size={16} />
+                  <span className="hidden sm:inline">Create Account</span>
+                </button>
+              </>
             )}
 
             {/* User Info with Dropdown */}
@@ -199,6 +221,13 @@ const NavigationBar = ({ className = '' }) => {
         onClose={() => setShowConvertModal(false)}
         onConvert={handleConvertAccount}
         username={user?.username || 'User'}
+      />
+
+      {/* Login Modal */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+        onLogin={handleLogin}
       />
 
       {/* Click outside to close user menu */}
