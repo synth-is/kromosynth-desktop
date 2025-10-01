@@ -84,6 +84,35 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
+   * Register new user
+   */
+  const register = async (email, password, username, displayName) => {
+    try {
+      setIsLoading(true);
+      
+      const result = await authService.register(email, password, username, displayName);
+      
+      if (result.success) {
+        setUser(result.user);
+        setIsAuthenticated(true);
+        
+        // Initialize sound garden for the user
+        await soundGardenService.initialize();
+        
+        console.log('User registration successful');
+        return { success: true, user: result.user };
+      } else {
+        return { success: false, error: result.error };
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      return { success: false, error: 'Registration failed' };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
    * Convert anonymous user to registered account
    */
   const convertAnonymous = async (email, password, username, displayName) => {
@@ -116,16 +145,9 @@ export const AuthProvider = ({ children }) => {
     try {
       await authService.logout();
       
-      // Get the new anonymous user that was created
-      const newUser = authService.getCurrentUser();
-      
-      if (newUser) {
-        setUser(newUser);
-        setIsAuthenticated(true);
-      } else {
-        setUser(null);
-        setIsAuthenticated(false);
-      }
+      // Clear user state - don't create new anonymous user
+      setUser(null);
+      setIsAuthenticated(false);
       
       // Clear sound garden
       soundGardenService.clearGarden();
@@ -188,8 +210,9 @@ export const AuthProvider = ({ children }) => {
     
     // Actions
     login,
+    register,  // Add register function
     logout,
-    convertAnonymous,  // ADD THIS - expose the conversion function
+    convertAnonymous,
     updatePreferences,
     getUserStats,
     refreshUser,

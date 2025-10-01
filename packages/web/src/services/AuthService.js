@@ -337,8 +337,7 @@ export class AuthService {
       console.error('Logout error:', error);
     } finally {
       this.clearSession();
-      // Create new anonymous user after logout
-      await this.createAnonymousUser();
+      // Don't create new anonymous user - let them sign in or reload page
     }
 
     return { success: true };

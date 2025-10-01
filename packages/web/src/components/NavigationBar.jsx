@@ -11,7 +11,7 @@ import LoginModal from './LoginModal.jsx';
 
 const NavigationBar = ({ className = '' }) => {
   const location = useLocation();
-  const { isAuthenticated, user, isAnonymous, convertAnonymous, login, logout } = useAuth();
+  const { isAuthenticated, user, isAnonymous, convertAnonymous, register, login, logout } = useAuth();
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -47,14 +47,24 @@ const NavigationBar = ({ className = '' }) => {
   };
 
   const handleConvertAccount = async (email, password, username, displayName) => {
-    const result = await convertAnonymous(email, password, username, displayName);
-    
-    if (result.success) {
-      setShowConvertModal(false);
-      console.log('Account created successfully!');
+    // If anonymous user, convert to keep data
+    // If no user (logged out), register new account
+    if (user && isAnonymous()) {
+      const result = await convertAnonymous(email, password, username, displayName);
+      if (result.success) {
+        setShowConvertModal(false);
+        console.log('Account created successfully!');
+      }
+      return result;
+    } else {
+      // No user or not anonymous - register new account
+      const result = await register(email, password, username, displayName);
+      if (result.success) {
+        setShowConvertModal(false);
+        console.log('Account registered successfully!');
+      }
+      return result;
     }
-    
-    return result;
   };
 
   const handleLogin = async (email, password) => {
@@ -122,7 +132,7 @@ const NavigationBar = ({ className = '' }) => {
         </div>
         
         {/* User Section */}
-        {isAuthenticated && user && (
+        {isAuthenticated && user ? (
           <div className="flex items-center gap-2">
             {/* User Info with Dropdown */}
             <div className="relative">
@@ -196,11 +206,23 @@ const NavigationBar = ({ className = '' }) => {
               )}
             </div>
           </div>
-        )}
-        
-        {!isAuthenticated && (
-          <div className="hidden md:block ml-4 text-sm text-gray-400">
-            <span>Loading...</span>
+        ) : (
+          /* No user - show Sign In and Create Account buttons */
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowLoginModal(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              <LogIn size={16} />
+              <span className="hidden sm:inline">Sign In</span>
+            </button>
+            <button
+              onClick={() => setShowConvertModal(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              <UserPlus size={16} />
+              <span className="hidden sm:inline">Create Account</span>
+            </button>
           </div>
         )}
       </nav>
