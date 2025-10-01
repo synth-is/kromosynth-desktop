@@ -124,28 +124,6 @@ const NavigationBar = ({ className = '' }) => {
         {/* User Section */}
         {isAuthenticated && user && (
           <div className="flex items-center gap-2">
-            {/* Anonymous User - Show Create Account and Sign In Buttons */}
-            {isAnonymous() && (
-              <>
-                <button
-                  onClick={() => setShowLoginModal(true)}
-                  className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-                  title="Sign in with existing account"
-                >
-                  <LogIn size={16} />
-                  <span className="hidden sm:inline">Sign In</span>
-                </button>
-                <button
-                  onClick={() => setShowConvertModal(true)}
-                  className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors shadow-lg"
-                  title="Create your permanent account"
-                >
-                  <UserPlus size={16} />
-                  <span className="hidden sm:inline">Create Account</span>
-                </button>
-              </>
-            )}
-
             {/* User Info with Dropdown */}
             <div className="relative">
               <button
@@ -183,16 +161,28 @@ const NavigationBar = ({ className = '' }) => {
                   </div>
 
                   {isAnonymous() && (
-                    <button
-                      onClick={() => {
-                        setShowUserMenu(false);
-                        setShowConvertModal(true);
-                      }}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-green-400 hover:bg-gray-700 transition-colors"
-                    >
-                      <UserPlus size={16} />
-                      <span>Create Account</span>
-                    </button>
+                    <>
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          setShowLoginModal(true);
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-blue-400 hover:bg-gray-700 transition-colors"
+                      >
+                        <LogIn size={16} />
+                        <span>Sign In</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          setShowConvertModal(true);
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-green-400 hover:bg-gray-700 transition-colors"
+                      >
+                        <UserPlus size={16} />
+                        <span>Create Account</span>
+                      </button>
+                    </>
                   )}
 
                   <button

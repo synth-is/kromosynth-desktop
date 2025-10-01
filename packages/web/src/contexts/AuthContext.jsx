@@ -114,12 +114,18 @@ export const AuthProvider = ({ children }) => {
    */
   const logout = async () => {
     try {
-      setIsLoading(true);
-      
       await authService.logout();
       
-      setUser(null);
-      setIsAuthenticated(false);
+      // Get the new anonymous user that was created
+      const newUser = authService.getCurrentUser();
+      
+      if (newUser) {
+        setUser(newUser);
+        setIsAuthenticated(true);
+      } else {
+        setUser(null);
+        setIsAuthenticated(false);
+      }
       
       // Clear sound garden
       soundGardenService.clearGarden();
@@ -129,8 +135,6 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Logout error:', error);
       return { success: false, error: 'Logout failed' };
-    } finally {
-      setIsLoading(false);
     }
   };
 
