@@ -84,6 +84,32 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
+   * Convert anonymous user to registered account
+   */
+  const convertAnonymous = async (email, password, username, displayName) => {
+    try {
+      setIsLoading(true);
+      
+      const result = await authService.convertAnonymous(email, password, username, displayName);
+      
+      if (result.success) {
+        setUser(result.user);
+        setIsAuthenticated(true);
+        
+        console.log('Anonymous user converted to registered account');
+        return { success: true, user: result.user };
+      } else {
+        return { success: false, error: result.error };
+      }
+    } catch (error) {
+      console.error('Conversion error:', error);
+      return { success: false, error: 'Conversion failed' };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
    * Logout user
    */
   const logout = async () => {
@@ -159,12 +185,14 @@ export const AuthProvider = ({ children }) => {
     // Actions
     login,
     logout,
+    convertAnonymous,  // ADD THIS - expose the conversion function
     updatePreferences,
     getUserStats,
     refreshUser,
     
     // Helper functions
     isUser: () => isAuthenticated && user,
+    isAnonymous: () => user?.isAnonymous === true,  // ADD THIS - check if user is anonymous
     getUserId: () => user?.id,
     getUsername: () => user?.username,
     getSubscriptionTier: () => user?.subscriptionTier || 'free',

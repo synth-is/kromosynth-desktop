@@ -272,14 +272,30 @@ export class AuthService {
       const response = await fetch(`${this.baseURL}/api/auth/convert`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
-        body: JSON.stringify({ email, password, username, displayName })
+        body: JSON.stringify({ 
+          email, 
+          password, 
+          passwordConfirm: password, // PocketBase requires password confirmation
+          username, 
+          displayName 
+        })
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
       const result = await response.json();
+      
+      if (!response.ok) {
+        // Log detailed error for debugging
+        console.error('Conversion failed:', {
+          status: response.status,
+          result
+        });
+        
+        return {
+          success: false,
+          error: result.error || result.message || `HTTP ${response.status}: ${response.statusText}`,
+          details: result.details // Include validation details if present
+        };
+      }
 
       if (result.success) {
         this.token = result.data.token;
