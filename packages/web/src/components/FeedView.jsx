@@ -21,13 +21,14 @@ import { useAuth } from '../contexts/AuthContext.jsx';
 import { soundGardenService } from '../services/SoundGardenService.js';
 import SoundRenderer from '../utils/SoundRenderer';
 import { getRestServiceHost, REST_ENDPOINTS } from '../constants';
+import { useNavigate } from 'react-router-dom';
 
 const RECOMMEND_SERVICE_URL = import.meta.env.VITE_RECOMMEND_SERVICE_URL || 'http://localhost:3004';
 
 /**
  * Modal to show all users who liked a sound
  */
-const AdoptersModal = ({ isOpen, onClose, adopters, soundName }) => {
+const AdoptersModal = ({ isOpen, onClose, adopters, soundName, onUserClick }) => {
   if (!isOpen) return null;
 
   return (
@@ -62,8 +63,8 @@ const AdoptersModal = ({ isOpen, onClose, adopters, soundName }) => {
                   key={userId}
                   className="flex items-center gap-3 p-3 bg-gray-700/50 rounded hover:bg-gray-700 transition-colors cursor-pointer"
                   onClick={() => {
-                    // TODO: Navigate to user profile
-                    console.log('Navigate to user profile:', userId);
+                    onUserClick(userId);
+                    onClose();
                   }}
                 >
                   {/* Avatar */}
@@ -132,7 +133,7 @@ const EmptyForYouState = () => {
 /**
  * Sound card component for discover tab
  */
-const SoundCard = ({ sound, onPlay, isPlaying, onLike, isLiked, onViewBiome, onViewAdopters }) => {
+const SoundCard = ({ sound, onPlay, isPlaying, onLike, isLiked, onViewBiome, onViewAdopters, onUserClick }) => {
   const [renderingProgress, setRenderingProgress] = useState(null);
   const [isInteracting, setIsInteracting] = useState(false);
 
@@ -334,6 +335,7 @@ const SoundCard = ({ sound, onPlay, isPlaying, onLike, isLiked, onViewBiome, onV
  */
 const FeedView = () => {
   const { user, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('discover'); // Default to discover
   const [sounds, setSounds] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -343,6 +345,13 @@ const FeedView = () => {
   const [likedSounds, setLikedSounds] = useState(new Set());
   const [adoptersModalOpen, setAdoptersModalOpen] = useState(false);
   const [selectedSound, setSelectedSound] = useState(null);
+
+  /**
+   * Navigate to user profile
+   */
+  const handleUserClick = (userId) => {
+    navigate(`/user/${userId}`);
+  };
 
   /**
    * Get auth headers (optional - endpoints are public)
@@ -579,6 +588,7 @@ const FeedView = () => {
                       isLiked={likedSounds.has(sound.id)}
                       onViewBiome={handleViewBiome}
                       onViewAdopters={handleViewAdopters}
+                      onUserClick={handleUserClick}
                     />
                   ))}
                 </div>
@@ -602,6 +612,7 @@ const FeedView = () => {
         onClose={() => setAdoptersModalOpen(false)}
         adopters={selectedSound?.sample_adopter_ids || []}
         soundName={selectedSound?.class || selectedSound?.name || 'this sound'}
+        onUserClick={handleUserClick}
       />
     </div>
   );

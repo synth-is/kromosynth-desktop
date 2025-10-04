@@ -22,6 +22,7 @@ import DynamicStrudelTestSimple from './components/DynamicStrudelTestSimple';
 import FeedView from './components/FeedView';
 import SoundGarden from './components/SoundGarden';
 import ExplorationView from './components/ExplorationView';
+import UserProfile from './components/UserProfile';
 import NavigationBar from './components/NavigationBar';
 import { StrudelPatternProvider } from './components/strudelPatternContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -894,6 +895,7 @@ const router = createBrowserRouter(
       <Route path="/" element={<FeedApp />} />
       <Route path="/feed" element={<Navigate to="/" replace />} />
       <Route path="/garden" element={<GardenApp />} />
+      <Route path="/user/:userId" element={<UserProfileApp />} />
       <Route path="/exploration" element={<ExplorationApp />} />
       <Route path="/tree" element={<TreeApp />} />
       <Route path="*" element={<Navigate to="/" replace />} />
@@ -983,6 +985,20 @@ function GardenApp() {
             window.location.href = '/tree?' + params.toString();
           }}
         />
+      </div>
+    </div>
+  );
+}
+
+// User Profile App wrapper
+function UserProfileApp() {
+  return (
+    <div className="h-screen w-screen flex flex-col bg-gray-950">
+      <div className="sticky top-0 z-50 bg-gray-900 border-b border-gray-700 px-2 md:px-4 py-3 shadow-sm">
+        <NavigationBar />
+      </div>
+      <div className="flex-1 w-full">
+        <UserProfile />
       </div>
     </div>
   );
