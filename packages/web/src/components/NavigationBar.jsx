@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { TreePine, Heart, Sparkles, UserPlus, User, LogOut, LogIn } from 'lucide-react';
+import { TreePine, Heart, Sparkles, Compass, UserPlus, User, LogOut, LogIn } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import ConvertAccountModal from './ConvertAccountModal.jsx';
 import LoginModal from './LoginModal.jsx';
@@ -30,6 +30,13 @@ const NavigationBar = ({ className = '' }) => {
       icon: Heart,
       description: 'Your liked sounds collection',
       requiresAuth: true
+    },
+    {
+      path: '/exploration',
+      label: 'Explore Favorites',
+      icon: Compass,
+      description: 'Discover sounds liked by the community',
+      requiresAuth: false // Public discovery feature
     },
     {
       path: '/tree',

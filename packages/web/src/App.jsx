@@ -21,6 +21,7 @@ import DynamicStrudelTest from './components/DynamicStrudelTest';
 import DynamicStrudelTestSimple from './components/DynamicStrudelTestSimple';
 import FeedView from './components/FeedView';
 import SoundGarden from './components/SoundGarden';
+import ExplorationView from './components/ExplorationView';
 import NavigationBar from './components/NavigationBar';
 import { StrudelPatternProvider } from './components/strudelPatternContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -893,6 +894,7 @@ const router = createBrowserRouter(
       <Route path="/" element={<FeedApp />} />
       <Route path="/feed" element={<Navigate to="/" replace />} />
       <Route path="/garden" element={<GardenApp />} />
+      <Route path="/exploration" element={<ExplorationApp />} />
       <Route path="/tree" element={<TreeApp />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Route>
@@ -920,6 +922,31 @@ function FeedApp() {
       </div>
       <div className="flex-1 w-full">
         <FeedView 
+          onNavigateToTree={(simulationId, soundId) => {
+            // Navigate to main app with specific simulation and sound
+            const params = new URLSearchParams();
+            params.set('run', simulationId);
+            params.set('view', 'tree');
+            if (soundId) {
+              params.set('highlight', soundId);
+            }
+            window.location.href = '/tree?' + params.toString();
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// Exploration App wrapper
+function ExplorationApp() {
+  return (
+    <div className="h-screen w-screen flex flex-col bg-gray-950">
+      <div className="sticky top-0 z-50 bg-gray-900 border-b border-gray-700 px-2 md:px-4 py-3 shadow-sm">
+        <NavigationBar />
+      </div>
+      <div className="flex-1 w-full">
+        <ExplorationView 
           onNavigateToTree={(simulationId, soundId) => {
             // Navigate to main app with specific simulation and sound
             const params = new URLSearchParams();

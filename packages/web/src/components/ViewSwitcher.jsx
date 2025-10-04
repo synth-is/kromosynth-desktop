@@ -1,5 +1,5 @@
 import React from 'react';
-import { GitBranch, Flame } from 'lucide-react';
+import { GitBranch, Flame, Compass, Heart } from 'lucide-react';
 
 const ViewSwitcher = ({ activeView, onViewChange }) => {
   return (
@@ -27,6 +27,30 @@ const ViewSwitcher = ({ activeView, onViewChange }) => {
         title="Heatmap View"
       >
         <Flame size={20} />
+      </button>
+      <button
+        onClick={() => onViewChange('feed')}
+        className={`p-3 rounded-lg flex items-center justify-center transition-all duration-200 ${
+          activeView === 'feed'
+            ? 'bg-blue-600 text-white shadow-md'
+            : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
+        }`}
+        aria-label="Switch to Feed View"
+        title="Feed View"
+      >
+        <Compass size={20} />
+      </button>
+      <button
+        onClick={() => onViewChange('exploration')}
+        className={`p-3 rounded-lg flex items-center justify-center transition-all duration-200 ${
+          activeView === 'exploration'
+            ? 'bg-blue-600 text-white shadow-md'
+            : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
+        }`}
+        aria-label="Switch to Exploration View"
+        title="Explore Favorites"
+      >
+        <Heart size={20} />
       </button>
     </div>
   );
