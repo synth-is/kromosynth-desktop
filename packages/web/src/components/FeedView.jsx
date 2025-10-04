@@ -26,6 +26,32 @@ import { useNavigate } from 'react-router-dom';
 const RECOMMEND_SERVICE_URL = import.meta.env.VITE_RECOMMEND_SERVICE_URL || 'http://localhost:3004';
 
 /**
+ * Format relative time (e.g., "2h ago", "3d ago")
+ */
+const getRelativeTime = (dateString) => {
+  if (!dateString) return null;
+  
+  const now = new Date();
+  const then = new Date(dateString);
+  const diffMs = now - then;
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+  const diffWeek = Math.floor(diffDay / 7);
+  const diffMonth = Math.floor(diffDay / 30);
+  const diffYear = Math.floor(diffDay / 365);
+  
+  if (diffYear > 0) return `${diffYear}y ago`;
+  if (diffMonth > 0) return `${diffMonth}mo ago`;
+  if (diffWeek > 0) return `${diffWeek}w ago`;
+  if (diffDay > 0) return `${diffDay}d ago`;
+  if (diffHour > 0) return `${diffHour}h ago`;
+  if (diffMin > 0) return `${diffMin}m ago`;
+  return 'just now';
+};
+
+/**
  * Modal to show all users who liked a sound
  */
 const AdoptersModal = ({ isOpen, onClose, adopters, soundName, onUserClick }) => {
@@ -225,6 +251,12 @@ const SoundCard = ({ sound, onPlay, isPlaying, onLike, isLiked, onViewBiome, onV
           <span className="bg-gray-700 px-2 py-1 rounded">
             {sound.duration?.toFixed(1) || '?'}s
           </span>
+          {sound.creation_date && (
+            <span className="bg-blue-900/30 text-blue-300 px-2 py-1 rounded flex items-center gap-1">
+              <Clock size={10} />
+              {getRelativeTime(sound.creation_date)}
+            </span>
+          )}
         </div>
       </div>
 
