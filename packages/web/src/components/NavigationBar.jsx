@@ -21,7 +21,7 @@ const NavigationBar = ({ className = '' }) => {
       path: '/',
       label: 'Sound Feed',
       icon: Sparkles,
-      description: 'Discover new sounds',
+      description: 'Discover sounds from the community',
       requiresAuth: true
     },
     {
@@ -30,13 +30,6 @@ const NavigationBar = ({ className = '' }) => {
       icon: Heart,
       description: 'Your liked sounds collection',
       requiresAuth: true
-    },
-    {
-      path: '/exploration',
-      label: 'Explore Favorites',
-      icon: Compass,
-      description: 'Discover sounds liked by the community',
-      requiresAuth: false // Public discovery feature
     },
     {
       path: '/tree',
