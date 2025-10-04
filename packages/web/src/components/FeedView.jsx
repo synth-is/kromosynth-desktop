@@ -14,7 +14,6 @@ import {
   UserPlus,
   TreePine,
   Clock,
-  TrendingUp,
   X
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext.jsx';
@@ -226,17 +225,6 @@ const SoundCard = ({ sound, onPlay, isPlaying, onLike, isLiked, onViewBiome, onV
     }
   };
 
-  // Extract friendly name from evolution run ID
-  const getFriendlyRunName = (runId) => {
-    if (!runId) return 'Unknown run';
-    // Extract the part after the ULID and underscore
-    const parts = runId.split('_');
-    if (parts.length > 1) {
-      return parts.slice(1).join('_').replace(/_/g, ' ');
-    }
-    return runId;
-  };
-
   return (
     <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 hover:border-gray-600 transition-colors">
       {/* Sound Info */}
@@ -371,6 +359,8 @@ const FeedView = () => {
   const [activeTab, setActiveTab] = useState('discover'); // Default to discover
   const [sounds, setSounds] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(null);
   const [sortBy, setSortBy] = useState('recent');
   const [currentlyPlaying, setCurrentlyPlaying] = useState(null);
@@ -404,13 +394,18 @@ const FeedView = () => {
   /**
    * Load discovered sounds from community
    */
-  const loadDiscoverSounds = useCallback(async () => {
+  const loadDiscoverSounds = useCallback(async (offset = 0, append = false) => {
     try {
-      setIsLoading(true);
+      if (offset === 0) {
+        setIsLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
       setError(null);
 
+      const limit = 20; // Load 20 at a time
       const response = await fetch(
-        `${RECOMMEND_SERVICE_URL}/api/exploration/adopted-sounds?limit=50&sortBy=${sortBy}`,
+        `${RECOMMEND_SERVICE_URL}/api/exploration/adopted-sounds?limit=${limit}&offset=${offset}&sortBy=${sortBy}`,
         { headers: getAuthHeaders() }
       );
 
@@ -421,16 +416,32 @@ const FeedView = () => {
       const data = await response.json();
       
       if (data.success) {
-        setSounds(data.data);
+        const newSounds = data.data;
         
-        // Load liked status
-        const likedSet = new Set();
-        for (const sound of data.data) {
-          if (soundGardenService.isSoundLiked(sound.id)) {
-            likedSet.add(sound.id);
-          }
+        if (append) {
+          // Deduplicate by sound ID when appending
+          setSounds(prev => {
+            const existingIds = new Set(prev.map(s => s.id));
+            const uniqueNewSounds = newSounds.filter(s => !existingIds.has(s.id));
+            return [...prev, ...uniqueNewSounds];
+          });
+        } else {
+          setSounds(newSounds);
         }
-        setLikedSounds(likedSet);
+        
+        // Check if there are more items to load
+        setHasMore(newSounds.length === limit);
+        
+        // Load liked status for new sounds - use functional update to avoid dependency
+        setLikedSounds(prevLiked => {
+          const likedSet = new Set(prevLiked);
+          for (const sound of newSounds) {
+            if (soundGardenService.isSoundLiked(sound.id)) {
+              likedSet.add(sound.id);
+            }
+          }
+          return likedSet;
+        });
       } else {
         setError('Failed to load sounds');
       }
@@ -439,6 +450,7 @@ const FeedView = () => {
       setError('Failed to load sounds. Please try again.');
     } finally {
       setIsLoading(false);
+      setIsLoadingMore(false);
     }
   }, [sortBy]);
 
@@ -455,7 +467,10 @@ const FeedView = () => {
    */
   useEffect(() => {
     if (activeTab === 'discover') {
-      loadDiscoverSounds();
+      // Reset and load from beginning when sort changes
+      setSounds([]);
+      setHasMore(true);
+      loadDiscoverSounds(0, false);
     } else {
       loadForYouFeed();
     }
@@ -538,47 +553,50 @@ const FeedView = () => {
         <div className="w-full max-w-6xl mx-auto">
           <h1 className="text-2xl font-bold text-white mb-4">Sound Feed</h1>
           
-          {/* Tabs */}
-          <div className="flex gap-2 mb-4">
-            <button
-              onClick={() => setActiveTab('for-you')}
-              className={`flex items-center gap-2 px-4 py-2 rounded transition-colors ${
-                activeTab === 'for-you'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-              }`}
-            >
-              <Users size={16} />
-              For You
-            </button>
-            <button
-              onClick={() => setActiveTab('discover')}
-              className={`flex items-center gap-2 px-4 py-2 rounded transition-colors ${
-                activeTab === 'discover'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-              }`}
-            >
-              <Sparkles size={16} />
-              Discover
-            </button>
-          </div>
-
-          {/* Sort Controls - Only show for Discover tab */}
-          {activeTab === 'discover' && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-400">Sort by:</span>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="px-3 py-1.5 bg-gray-800 text-white text-sm rounded border border-gray-700 focus:border-blue-500 focus:outline-none"
+          {/* Tabs and Sort Controls */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            {/* Tabs */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setActiveTab('for-you')}
+                className={`flex items-center gap-2 px-4 py-2 rounded transition-colors ${
+                  activeTab === 'for-you'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                }`}
               >
-                <option value="recent">Most Recent</option>
-                <option value="popular">Most Popular</option>
-                <option value="quality">Highest Quality</option>
-              </select>
+                <Users size={16} />
+                For You
+              </button>
+              <button
+                onClick={() => setActiveTab('discover')}
+                className={`flex items-center gap-2 px-4 py-2 rounded transition-colors ${
+                  activeTab === 'discover'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                }`}
+              >
+                <Sparkles size={16} />
+                Discover
+              </button>
             </div>
-          )}
+
+            {/* Sort Controls - Only show for Discover tab */}
+            {activeTab === 'discover' && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-400">Sort by:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="px-3 py-1.5 bg-gray-800 text-white text-sm rounded border border-gray-700 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="recent">Most Recent</option>
+                  <option value="popular">Most Popular</option>
+                  <option value="quality">Highest Quality</option>
+                </select>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -624,6 +642,33 @@ const FeedView = () => {
                     />
                   ))}
                 </div>
+
+                {/* Load More Button */}
+                {hasMore && sounds.length > 0 && (
+                  <div className="text-center py-8">
+                    <button
+                      onClick={() => loadDiscoverSounds(sounds.length, true)}
+                      disabled={isLoadingMore}
+                      className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                    >
+                      {isLoadingMore ? (
+                        <span className="flex items-center gap-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          Loading...
+                        </span>
+                      ) : (
+                        `Load More Sounds (${sounds.length} loaded)`
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* End of results */}
+                {!hasMore && sounds.length > 0 && (
+                  <div className="text-center py-8">
+                    <p className="text-gray-400">You've reached the end! ({sounds.length} sounds total)</p>
+                  </div>
+                )}
 
                 {/* Empty State */}
                 {sounds.length === 0 && !isLoading && (
