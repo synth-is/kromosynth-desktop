@@ -1,28 +1,61 @@
 /**
  * Service for managing the personal sound garden (liked sounds)
+ * Syncs between localStorage and backend for authenticated users
  */
 
 import { recommendationService } from './RecommendationService.js';
 import { authService } from './AuthService.js';
 
+const RECOMMEND_SERVICE_BASE_URL = import.meta.env.VITE_RECOMMEND_SERVICE_URL || 'http://localhost:3004';
+
 export class SoundGardenService {
   constructor() {
     this.likedSounds = new Map(); // soundId -> sound data
     this.initialized = false;
+    this.baseURL = RECOMMEND_SERVICE_BASE_URL;
   }
 
   /**
-   * Initialize the sound garden from localStorage
+   * Get JWT token from auth service
    */
-  async initialize() {
-    if (this.initialized) return;
+  getToken() {
+    return localStorage.getItem('kromosynth_token') || null;
+  }
+
+  /**
+   * Get headers for authenticated requests
+   */
+  getAuthHeaders() {
+    const token = this.getToken();
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  }
+
+  /**
+   * Initialize the sound garden
+   * Loads from localStorage first, then syncs with backend if authenticated
+   */
+  async initialize(forceReload = false) {
+    if (this.initialized && !forceReload) return;
 
     try {
+      // First load from localStorage
       const savedGarden = localStorage.getItem('kromosynth_sound_garden');
       if (savedGarden) {
         const gardenData = JSON.parse(savedGarden);
         this.likedSounds = new Map(gardenData);
-        console.log(`Loaded ${this.likedSounds.size} liked sounds from storage`);
+        console.log(`Loaded ${this.likedSounds.size} liked sounds from localStorage`);
+      }
+
+      // If authenticated, sync with backend
+      const currentUser = authService.getCurrentUser();
+      if (currentUser && !currentUser.isAnonymous) {
+        await this.syncWithBackend();
       }
 
       this.initialized = true;
@@ -30,6 +63,90 @@ export class SoundGardenService {
       console.error('Error initializing sound garden:', error);
       this.likedSounds = new Map();
       this.initialized = true;
+    }
+  }
+
+  /**
+   * Sync with backend: upload local likes and download backend likes
+   */
+  async syncWithBackend() {
+    try {
+      const currentUser = authService.getCurrentUser();
+      if (!currentUser || currentUser.isAnonymous) {
+        console.log('Not syncing: user is anonymous');
+        return;
+      }
+
+      // First, upload any local liked sounds that aren't in the backend yet
+      if (this.likedSounds.size > 0) {
+        const localSounds = Array.from(this.likedSounds.values());
+        await this.uploadLikedSounds(localSounds);
+      }
+
+      // Then download all liked sounds from backend
+      const backendSounds = await this.downloadLikedSounds();
+      
+      // Merge backend sounds into local map
+      for (const sound of backendSounds) {
+        if (!this.likedSounds.has(sound.soundId)) {
+          this.likedSounds.set(sound.soundId, {
+            ...sound,
+            playCount: 0,
+            lastPlayed: null
+          });
+        }
+      }
+
+      this.saveToStorage();
+      console.log(`Synced with backend: now have ${this.likedSounds.size} liked sounds`);
+    } catch (error) {
+      console.error('Error syncing with backend:', error);
+      // Continue with local data if sync fails
+    }
+  }
+
+  /**
+   * Download liked sounds from backend
+   */
+  async downloadLikedSounds() {
+    try {
+      const response = await fetch(`${this.baseURL}/api/user/garden`, {
+        headers: this.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch garden: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      return result.data || [];
+    } catch (error) {
+      console.error('Error downloading liked sounds:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Upload liked sounds to backend
+   */
+  async uploadLikedSounds(likedSounds) {
+    try {
+      const response = await fetch(`${this.baseURL}/api/user/garden/sync`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ likedSounds })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to sync garden: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log(`Uploaded ${result.data.syncedCount} sounds to backend`);
+      return result.data;
+    } catch (error) {
+      console.error('Error uploading liked sounds:', error);
+      throw error;
     }
   }
 
@@ -71,8 +188,17 @@ export class SoundGardenService {
         });
       }
 
-      // Update user stats
+      // If authenticated, also sync this like to backend immediately
       const currentUser = authService.getCurrentUser();
+      if (currentUser && !currentUser.isAnonymous) {
+        try {
+          await this.uploadLikedSounds([likedSound]);
+        } catch (error) {
+          console.warn('Failed to sync like to backend, will retry on next sync:', error);
+        }
+      }
+
+      // Update user stats
       if (currentUser) {
         authService.updateStats({
           soundsLiked: currentUser.stats.soundsLiked + 1

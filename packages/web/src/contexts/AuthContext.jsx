@@ -68,8 +68,8 @@ export const AuthProvider = ({ children }) => {
         setUser(result.user);
         setIsAuthenticated(true);
         
-        // Initialize sound garden for the user
-        await soundGardenService.initialize();
+        // Re-initialize sound garden and sync with backend
+        await soundGardenService.initialize(true); // force reload to sync
         
         return { success: true, user: result.user };
       } else {
@@ -96,8 +96,8 @@ export const AuthProvider = ({ children }) => {
         setUser(result.user);
         setIsAuthenticated(true);
         
-        // Initialize sound garden for the user
-        await soundGardenService.initialize();
+        // Re-initialize sound garden and sync with backend
+        await soundGardenService.initialize(true); // force reload to sync
         
         console.log('User registration successful');
         return { success: true, user: result.user };
@@ -124,6 +124,10 @@ export const AuthProvider = ({ children }) => {
       if (result.success) {
         setUser(result.user);
         setIsAuthenticated(true);
+        
+        // Re-initialize sound garden and sync local likes to backend
+        // This is crucial: it uploads the anonymous user's liked sounds to the new account
+        await soundGardenService.initialize(true); // force reload to sync
         
         console.log('Anonymous user converted to registered account');
         return { success: true, user: result.user };
