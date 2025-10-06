@@ -83,12 +83,12 @@ const AdoptersModal = ({ isOpen, onClose, adopters, soundName, onUserClick }) =>
         <div className="overflow-y-auto max-h-[60vh]">
           {adopters && adopters.length > 0 ? (
             <div className="p-4 space-y-3">
-              {adopters.map((userId, index) => (
+              {adopters.map((adopter, index) => (
                 <div
-                  key={userId}
+                  key={adopter.id}
                   className="flex items-center gap-3 p-3 bg-gray-700/50 rounded hover:bg-gray-700 transition-colors cursor-pointer"
                   onClick={() => {
-                    onUserClick(userId);
+                    onUserClick(adopter.id);
                     onClose();
                   }}
                 >
@@ -96,16 +96,16 @@ const AdoptersModal = ({ isOpen, onClose, adopters, soundName, onUserClick }) =>
                   <div 
                     className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold flex-shrink-0"
                   >
-                    {index + 1}
+                    {adopter.username ? adopter.username.charAt(0).toUpperCase() : (index + 1)}
                   </div>
                   
                   {/* User Info */}
                   <div className="flex-1 min-w-0">
                     <div className="text-white font-medium truncate">
-                      User {userId.slice(0, 8)}
+                      {adopter.display_name || adopter.username || `User ${adopter.id.slice(0, 8)}`}
                     </div>
                     <div className="text-sm text-gray-400 truncate">
-                      {userId}
+                      @{adopter.username || adopter.id.slice(0, 8)}
                     </div>
                   </div>
 
@@ -297,7 +297,7 @@ const SoundCard = ({ sound, onPlay, isPlaying, onLike, isLiked, onViewBiome, onV
 
         <div className="flex items-center gap-2">
           {/* Adopters Display - Overlapping Avatars */}
-          {sound.sample_adopter_ids && sound.sample_adopter_ids.length > 0 && (
+          {sound.sample_adopters && sound.sample_adopters.length > 0 && (
             <button
               onClick={() => onViewAdopters(sound)}
               className="flex items-center gap-1 bg-transparent hover:opacity-80 transition-opacity"
@@ -305,13 +305,14 @@ const SoundCard = ({ sound, onPlay, isPlaying, onLike, isLiked, onViewBiome, onV
             >
               {/* Overlapping avatar circles */}
               <div className="flex items-center -space-x-2">
-                {sound.sample_adopter_ids.slice(0, 3).map((userId, idx) => (
+                {sound.sample_adopters.slice(0, 3).map((adopter, idx) => (
                   <div
-                    key={userId}
+                    key={adopter.id}
                     className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-xs font-semibold border-2 border-gray-800 hover:z-10 transition-all"
                     style={{ zIndex: 3 - idx }}
+                    title={adopter.display_name || adopter.username || adopter.id}
                   >
-                    {idx + 1}
+                    {adopter.username ? adopter.username.charAt(0).toUpperCase() : (idx + 1)}
                   </div>
                 ))}
               </div>
@@ -706,7 +707,7 @@ const FeedView = () => {
       <AdoptersModal
         isOpen={adoptersModalOpen}
         onClose={() => setAdoptersModalOpen(false)}
-        adopters={selectedSound?.sample_adopter_ids || []}
+        adopters={selectedSound?.adopters || []}
         soundName={selectedSound?.class || selectedSound?.name || 'this sound'}
         onUserClick={handleUserClick}
       />
