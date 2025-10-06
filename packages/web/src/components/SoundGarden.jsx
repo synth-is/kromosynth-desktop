@@ -87,14 +87,6 @@ const GardenSoundCard = ({ sound, onPlay, onRemove, onViewBiome, isPlaying }) =>
           <span className="text-sm text-gray-300">
             {new Date(sound.likedAt).toLocaleDateString()}
           </span>
-          {sound.playCount > 0 && (
-            <>
-              <div className="h-1 w-1 bg-gray-500 rounded-full"></div>
-              <span className="text-xs text-gray-500">
-                {sound.playCount}x
-              </span>
-            </>
-          )}
         </div>
         
         <button
@@ -187,12 +179,8 @@ const GardenSoundCard = ({ sound, onPlay, onRemove, onViewBiome, isPlaying }) =>
         <div className="mt-4 pt-4 border-t border-gray-700">
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <h4 className="text-gray-300 font-medium mb-2">Stats</h4>
+              <h4 className="text-gray-300 font-medium mb-2">Info</h4>
               <div className="space-y-1 text-gray-400 text-xs">
-                <div>Plays: {sound.playCount || 0}</div>
-                {sound.lastPlayed && (
-                  <div>Last: {new Date(sound.lastPlayed).toLocaleDateString()}</div>
-                )}
                 <div>Added: {new Date(sound.likedAt).toLocaleDateString()}</div>
               </div>
             </div>
@@ -214,7 +202,14 @@ const GardenSoundCard = ({ sound, onPlay, onRemove, onViewBiome, isPlaying }) =>
   );
 };
 
-const GardenStats = ({ stats }) => {
+const GardenStats = ({ stats, sounds }) => {
+  // Calculate actual "this week" count
+  const thisWeekCount = sounds.filter(sound => {
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    return new Date(sound.likedAt) >= weekAgo;
+  }).length;
+
   return (
     <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
       <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
@@ -222,31 +217,24 @@ const GardenStats = ({ stats }) => {
         Garden Statistics
       </h3>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <div className="text-center">
           <div className="text-2xl font-bold text-green-400">{stats.totalSounds}</div>
           <div className="text-sm text-gray-400">Sounds</div>
         </div>
         
         <div className="text-center">
-          <div className="text-2xl font-bold text-blue-400">
-            {stats.totalPlays || 0}
+          <div className="text-2xl font-bold text-orange-400">
+            {thisWeekCount}
           </div>
-          <div className="text-sm text-gray-400">Total Plays</div>
+          <div className="text-sm text-gray-400">This Week</div>
         </div>
         
         <div className="text-center">
           <div className="text-2xl font-bold text-purple-400">
-            {stats.mostPlayedSound?.playCount || 0}
+            {Object.keys(stats.synthesisTypeDistribution || {}).length}
           </div>
-          <div className="text-sm text-gray-400">Most Played</div>
-        </div>
-        
-        <div className="text-center">
-          <div className="text-2xl font-bold text-orange-400">
-            {stats.recentlyLiked?.length || 0}
-          </div>
-          <div className="text-sm text-gray-400">This Week</div>
+          <div className="text-sm text-gray-400">Types</div>
         </div>
       </div>
     </div>
@@ -314,10 +302,6 @@ const SoundGarden = ({ onNavigateToTree }) => {
             new Date(sound.likedAt) >= weekAgo
           );
           break;
-        case 'popular':
-          filtered = filtered.filter(sound => (sound.playCount || 0) > 0)
-                           .sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
-          break;
       }
     }
 
@@ -360,14 +344,6 @@ const SoundGarden = ({ onNavigateToTree }) => {
       setCurrentlyPlaying(null);
     } else {
       setCurrentlyPlaying(soundId);
-      if (soundId) {
-        soundGardenService.recordSoundPlay(soundId);
-        // Update stats after play
-        setTimeout(() => {
-          const newStats = soundGardenService.getGardenStats();
-          setStats(newStats);
-        }, 100);
-      }
     }
   };
 
@@ -464,7 +440,6 @@ const SoundGarden = ({ onNavigateToTree }) => {
             >
               <option value="all">All Sounds</option>
               <option value="recent">Recent (7 days)</option>
-              <option value="popular">Most Played</option>
             </select>
           </div>
         </div>
@@ -495,7 +470,7 @@ const SoundGarden = ({ onNavigateToTree }) => {
               {/* Statistics */}
               {showStats && stats && (
                 <div className="mb-6">
-                  <GardenStats stats={stats} />
+                  <GardenStats stats={stats} sounds={sounds} />
                 </div>
               )}
 
