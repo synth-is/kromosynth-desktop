@@ -1,6 +1,6 @@
 /**
  * Service for managing the personal sound garden (liked sounds)
- * Syncs between localStorage and backend for authenticated users
+ * Always fetches from backend - single source of truth
  */
 
 import { recommendationService } from './RecommendationService.js';
@@ -10,8 +10,7 @@ const RECOMMEND_SERVICE_BASE_URL = import.meta.env.VITE_RECOMMEND_SERVICE_URL ||
 
 export class SoundGardenService {
   constructor() {
-    this.likedSounds = new Map(); // soundId -> sound data
-    this.initialized = false;
+    this.likedSounds = new Map(); // In-memory cache for current session
     this.baseURL = RECOMMEND_SERVICE_BASE_URL;
   }
 
@@ -37,79 +36,18 @@ export class SoundGardenService {
   }
 
   /**
-   * Initialize the sound garden
-   * Loads from localStorage first, then syncs with backend if authenticated
+   * Load liked sounds from backend
+   * This is the ONLY source of truth
    */
-  async initialize(forceReload = false) {
-    if (this.initialized && !forceReload) return;
-
-    try {
-      // First load from localStorage
-      const savedGarden = localStorage.getItem('kromosynth_sound_garden');
-      if (savedGarden) {
-        const gardenData = JSON.parse(savedGarden);
-        this.likedSounds = new Map(gardenData);
-        console.log(`Loaded ${this.likedSounds.size} liked sounds from localStorage`);
-      }
-
-      // If authenticated, sync with backend
-      const currentUser = authService.getCurrentUser();
-      if (currentUser && !currentUser.isAnonymous) {
-        await this.syncWithBackend();
-      }
-
-      this.initialized = true;
-    } catch (error) {
-      console.error('Error initializing sound garden:', error);
-      this.likedSounds = new Map();
-      this.initialized = true;
-    }
-  }
-
-  /**
-   * Sync with backend: upload local likes and download backend likes
-   */
-  async syncWithBackend() {
+  async loadFromBackend() {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.isAnonymous) {
-        console.log('Not syncing: user is anonymous');
+        console.log('Cannot load garden: user not authenticated');
+        this.likedSounds.clear();
         return;
       }
 
-      // First, upload any local liked sounds that aren't in the backend yet
-      if (this.likedSounds.size > 0) {
-        const localSounds = Array.from(this.likedSounds.values());
-        await this.uploadLikedSounds(localSounds);
-      }
-
-      // Then download all liked sounds from backend
-      const backendSounds = await this.downloadLikedSounds();
-      
-      // Merge backend sounds into local map
-      for (const sound of backendSounds) {
-        if (!this.likedSounds.has(sound.soundId)) {
-          this.likedSounds.set(sound.soundId, {
-            ...sound,
-            playCount: 0,
-            lastPlayed: null
-          });
-        }
-      }
-
-      this.saveToStorage();
-      console.log(`Synced with backend: now have ${this.likedSounds.size} liked sounds`);
-    } catch (error) {
-      console.error('Error syncing with backend:', error);
-      // Continue with local data if sync fails
-    }
-  }
-
-  /**
-   * Download liked sounds from backend
-   */
-  async downloadLikedSounds() {
-    try {
       const response = await fetch(`${this.baseURL}/api/user/garden`, {
         headers: this.getAuthHeaders()
       });
@@ -119,83 +57,60 @@ export class SoundGardenService {
       }
 
       const result = await response.json();
-      return result.data || [];
-    } catch (error) {
-      console.error('Error downloading liked sounds:', error);
-      return [];
-    }
-  }
+      const sounds = result.data || [];
 
-  /**
-   * Upload liked sounds to backend
-   */
-  async uploadLikedSounds(likedSounds) {
-    try {
-      const response = await fetch(`${this.baseURL}/api/user/garden/sync`, {
-        method: 'POST',
-        headers: this.getAuthHeaders(),
-        body: JSON.stringify({ likedSounds })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to sync garden: ${response.statusText}`);
+      // Update in-memory cache
+      this.likedSounds.clear();
+      for (const sound of sounds) {
+        this.likedSounds.set(sound.soundId, sound);
       }
 
-      const result = await response.json();
-      console.log(`Uploaded ${result.data.syncedCount} sounds to backend`);
-      return result.data;
+      console.log(`Loaded ${this.likedSounds.size} liked sounds from backend`);
     } catch (error) {
-      console.error('Error uploading liked sounds:', error);
+      console.error('Error loading sound garden from backend:', error);
       throw error;
     }
   }
 
   /**
-   * Save garden to localStorage
-   */
-  saveToStorage() {
-    try {
-      const gardenData = Array.from(this.likedSounds.entries());
-      localStorage.setItem('kromosynth_sound_garden', JSON.stringify(gardenData));
-    } catch (error) {
-      console.error('Error saving sound garden:', error);
-    }
-  }
-
-  /**
    * Like a sound (add to garden)
+   * Goes directly to backend
    */
   async likeSound(soundId, soundData, feedEntryId = null) {
     try {
-      // Add to local garden
-      const likedSound = {
+      const currentUser = authService.getCurrentUser();
+      if (!currentUser || currentUser.isAnonymous) {
+        throw new Error('Must be authenticated to like sounds');
+      }
+
+      // Optimistically add to in-memory cache for instant UI feedback
+      const optimisticSound = {
         ...soundData,
         soundId,
         likedAt: new Date().toISOString(),
-        feedEntryId,
-        playCount: 0,
-        lastPlayed: null
+        feedEntryId
       };
+      this.likedSounds.set(soundId, optimisticSound);
 
-      this.likedSounds.set(soundId, likedSound);
-      this.saveToStorage();
-
-      // Record interaction with recommendation service
+      // Record interaction with recommendation service (this also saves to backend)
       if (feedEntryId) {
         await recommendationService.recordInteraction(feedEntryId, 'like', {
           soundId,
           context: 'feed'
         });
-      }
+      } else {
+        // If no feedEntryId, we need to sync directly
+        const likedSound = {
+          soundId,
+          likedAt: optimisticSound.likedAt,
+          metadata: soundData.metadata
+        };
 
-      // If authenticated, also sync this like to backend immediately
-      const currentUser = authService.getCurrentUser();
-      if (currentUser && !currentUser.isAnonymous) {
-        try {
-          await this.uploadLikedSounds([likedSound]);
-        } catch (error) {
-          console.warn('Failed to sync like to backend, will retry on next sync:', error);
-        }
+        await fetch(`${this.baseURL}/api/user/garden/sync`, {
+          method: 'POST',
+          headers: this.getAuthHeaders(),
+          body: JSON.stringify({ likedSounds: [likedSound] })
+        });
       }
 
       // Update user stats
@@ -206,8 +121,10 @@ export class SoundGardenService {
       }
 
       console.log(`Liked sound: ${soundId}`);
-      return { success: true, sound: likedSound };
+      return { success: true, sound: optimisticSound };
     } catch (error) {
+      // Revert optimistic update on failure
+      this.likedSounds.delete(soundId);
       console.error('Error liking sound:', error);
       throw error;
     }
@@ -215,34 +132,38 @@ export class SoundGardenService {
 
   /**
    * Unlike a sound (remove from garden)
+   * Goes directly to backend
    */
   async unlikeSound(soundId, feedEntryId = null) {
     try {
-      const wasLiked = this.likedSounds.has(soundId);
-      
-      if (wasLiked) {
-        this.likedSounds.delete(soundId);
-        this.saveToStorage();
-
-        // Record interaction with recommendation service
-        if (feedEntryId) {
-          await recommendationService.recordInteraction(feedEntryId, 'unlike', {
-            soundId,
-            context: 'garden'
-          });
-        }
-
-        // Update user stats
-        const currentUser = authService.getCurrentUser();
-        if (currentUser && currentUser.stats.soundsLiked > 0) {
-          authService.updateStats({
-            soundsLiked: currentUser.stats.soundsLiked - 1
-          });
-        }
-
-        console.log(`Unliked sound: ${soundId}`);
+      const currentUser = authService.getCurrentUser();
+      if (!currentUser || currentUser.isAnonymous) {
+        throw new Error('Must be authenticated to unlike sounds');
       }
 
+      const wasLiked = this.likedSounds.has(soundId);
+
+      // Optimistically remove from cache
+      this.likedSounds.delete(soundId);
+
+      // Call DELETE endpoint to remove from backend
+      const response = await fetch(`${this.baseURL}/api/user/garden/${soundId}`, {
+        method: 'DELETE',
+        headers: this.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to unlike sound: ${response.statusText}`);
+      }
+
+      // Update user stats
+      if (currentUser && currentUser.stats.soundsLiked > 0) {
+        authService.updateStats({
+          soundsLiked: currentUser.stats.soundsLiked - 1
+        });
+      }
+
+      console.log(`Unliked sound: ${soundId}`);
       return { success: true, wasLiked };
     } catch (error) {
       console.error('Error unliking sound:', error);
@@ -252,6 +173,7 @@ export class SoundGardenService {
 
   /**
    * Check if a sound is liked
+   * Uses in-memory cache (must call loadFromBackend first)
    */
   isSoundLiked(soundId) {
     return this.likedSounds.has(soundId);
@@ -265,7 +187,8 @@ export class SoundGardenService {
   }
 
   /**
-   * Get all liked sounds
+   * Get all liked sounds (from cache)
+   * Call loadFromBackend() first to ensure fresh data
    */
   getAllLikedSounds() {
     return Array.from(this.likedSounds.values()).sort((a, b) => 
@@ -275,6 +198,7 @@ export class SoundGardenService {
 
   /**
    * Get liked sounds with pagination
+   * Call loadFromBackend() first to ensure fresh data
    */
   getLikedSounds(limit = 20, offset = 0) {
     const allSounds = this.getAllLikedSounds();
@@ -337,27 +261,6 @@ export class SoundGardenService {
   }
 
   /**
-   * Record sound play
-   */
-  recordSoundPlay(soundId) {
-    const sound = this.likedSounds.get(soundId);
-    if (sound) {
-      sound.playCount = (sound.playCount || 0) + 1;
-      sound.lastPlayed = new Date().toISOString();
-      this.likedSounds.set(soundId, sound);
-      this.saveToStorage();
-
-      // Update user stats
-      const currentUser = authService.getCurrentUser();
-      if (currentUser) {
-        authService.updateStats({
-          totalPlayTime: currentUser.stats.totalPlayTime + (sound.metadata?.duration || 3)
-        });
-      }
-    }
-  }
-
-  /**
    * Get sound garden statistics
    */
   getGardenStats() {
@@ -366,22 +269,11 @@ export class SoundGardenService {
     if (sounds.length === 0) {
       return {
         totalSounds: 0,
-        totalPlayTime: 0,
-        mostPlayedSound: null,
         recentlyLiked: [],
         synthesisTypeDistribution: {},
         tagsDistribution: {}
       };
     }
-
-    // Calculate statistics
-    const totalPlayTime = sounds.reduce((acc, sound) => 
-      acc + ((sound.metadata?.duration || 3) * (sound.playCount || 0)), 0
-    );
-
-    const mostPlayedSound = sounds.reduce((max, sound) => 
-      (sound.playCount || 0) > (max.playCount || 0) ? sound : max
-    );
 
     const recentlyLiked = sounds.slice(0, 5);
 
@@ -404,8 +296,6 @@ export class SoundGardenService {
 
     return {
       totalSounds: sounds.length,
-      totalPlayTime,
-      mostPlayedSound,
       recentlyLiked,
       synthesisTypeDistribution,
       tagsDistribution
@@ -434,20 +324,11 @@ export class SoundGardenService {
   }
 
   /**
-   * Clear all liked sounds
+   * Clear all liked sounds (for admin/testing)
+   * This only clears the cache - backend data persists
    */
-  clearGarden() {
+  clearCache() {
     this.likedSounds.clear();
-    this.saveToStorage();
-    
-    // Reset user stats
-    const currentUser = authService.getCurrentUser();
-    if (currentUser) {
-      authService.updateStats({
-        soundsLiked: 0
-      });
-    }
-
     return { success: true };
   }
 }

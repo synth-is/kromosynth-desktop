@@ -365,6 +365,7 @@ const FeedView = () => {
   const [sortBy, setSortBy] = useState('recent');
   const [currentlyPlaying, setCurrentlyPlaying] = useState(null);
   const [likedSounds, setLikedSounds] = useState(new Set());
+  const [isLoadingGarden, setIsLoadingGarden] = useState(false);
   const [adoptersModalOpen, setAdoptersModalOpen] = useState(false);
   const [selectedSound, setSelectedSound] = useState(null);
 
@@ -432,16 +433,7 @@ const FeedView = () => {
         // Check if there are more items to load
         setHasMore(newSounds.length === limit);
         
-        // Load liked status for new sounds - use functional update to avoid dependency
-        setLikedSounds(prevLiked => {
-          const likedSet = new Set(prevLiked);
-          for (const sound of newSounds) {
-            if (soundGardenService.isSoundLiked(sound.id)) {
-              likedSet.add(sound.id);
-            }
-          }
-          return likedSet;
-        });
+        // Liked status is already loaded from backend via loadLikedSounds()
       } else {
         setError('Failed to load sounds');
       }
@@ -461,6 +453,34 @@ const FeedView = () => {
     // TODO: Implement when following system is ready
     setIsLoading(false);
   }, []);
+
+  /**
+   * Load liked sounds from backend
+   */
+  const loadLikedSounds = useCallback(async () => {
+    if (!isAuthenticated) return;
+    
+    setIsLoadingGarden(true);
+    try {
+      await soundGardenService.loadFromBackend();
+      // Update liked sounds set from the service
+      const allLiked = soundGardenService.getAllLikedSounds();
+      setLikedSounds(new Set(allLiked.map(s => s.soundId)));
+    } catch (error) {
+      console.error('Failed to load liked sounds:', error);
+    } finally {
+      setIsLoadingGarden(false);
+    }
+  }, [isAuthenticated]);
+
+  /**
+   * Load liked sounds on mount
+   */
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadLikedSounds();
+    }
+  }, [isAuthenticated, loadLikedSounds]);
 
   /**
    * Load data when tab or sort changes
@@ -484,14 +504,19 @@ const FeedView = () => {
       const isCurrentlyLiked = likedSounds.has(sound.id);
       
       if (isCurrentlyLiked) {
-        // Unlike
-        await soundGardenService.unlikeSound(sound.id);
+        // Optimistic update
         setLikedSounds(prev => {
           const newSet = new Set(prev);
           newSet.delete(sound.id);
           return newSet;
         });
+        
+        // Unlike
+        await soundGardenService.unlikeSound(sound.id);
       } else {
+        // Optimistic update
+        setLikedSounds(prev => new Set([...prev, sound.id]));
+        
         // Like - add to garden
         await soundGardenService.likeSound(sound.id, {
           sound_id: sound.id,
@@ -506,10 +531,14 @@ const FeedView = () => {
             origin_evolution_run_id: sound.origin_evolution_run_id
           }
         });
-        setLikedSounds(prev => new Set([...prev, sound.id]));
       }
+      
+      // Refetch the sound list to update adoption counts and avatar lists
+      await loadDiscoverSounds(0, false);
     } catch (error) {
       console.error('Error handling like:', error);
+      // Reload liked sounds from backend to get correct state
+      await loadLikedSounds();
     }
   };
 
@@ -533,18 +562,8 @@ const FeedView = () => {
     setAdoptersModalOpen(true);
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-white mb-2">Sign in to explore</h2>
-          <p className="text-gray-400">
-            Discover sounds from the community and build your personal sound garden.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Discover feed is public - no auth check needed
+  // Like functionality requires auth, handled in handleLike
 
   return (
     <div className="h-full w-full flex flex-col bg-gray-950">

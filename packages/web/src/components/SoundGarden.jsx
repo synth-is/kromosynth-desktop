@@ -265,16 +265,16 @@ const SoundGarden = ({ onNavigateToTree }) => {
   const [showStats, setShowStats] = useState(true);
 
   /**
-   * Load garden data
+   * Load garden data from backend
    */
   const loadGarden = useCallback(async () => {
     try {
       setIsLoading(true);
       
-      // Ensure sound garden service is initialized
-      await soundGardenService.initialize();
+      // Load from backend (single source of truth)
+      await soundGardenService.loadFromBackend();
       
-      // Get all liked sounds
+      // Get all liked sounds from the loaded cache
       const likedSounds = soundGardenService.getAllLikedSounds();
       setSounds(likedSounds);
       
@@ -338,10 +338,17 @@ const SoundGarden = ({ onNavigateToTree }) => {
    */
   const handleRemoveSound = async (sound) => {
     try {
+      // Optimistic update
+      setSounds(prev => prev.filter(s => s.soundId !== sound.soundId));
+      
       await soundGardenService.unlikeSound(sound.soundId);
-      await loadGarden(); // Reload to update stats
+      
+      // Reload from backend to get fresh data
+      await loadGarden();
     } catch (error) {
       console.error('Error removing sound:', error);
+      // Reload on error to restore correct state
+      await loadGarden();
     }
   };
 
